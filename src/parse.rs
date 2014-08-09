@@ -22,6 +22,7 @@ enum Token {
 	
 	TokNewline,
 	TokComma,
+	TokColon,
 	TokAssign,
 	
 	TokPlus,
@@ -54,14 +55,46 @@ struct Parser<'stream>
 
 
 macro_rules! is_enum( ($val:expr $exp:pat) => (match $val { $exp => true, _ => false }) )
-macro_rules! exp_enum( ($val:expr $exp:ident) => (match $val { $exp(x) => x, _ => fail!("Expected enum") }) )
+macro_rules! exp_enum( ($val:expr $exp:ident) => (match $val { $exp(x) => x, _ => fail!("Expected enum {}", $exp) }) )
 macro_rules! parse_try( ($e:expr, $rv:expr) => (match $e {Ok(v) => v, Err(_) => return $rv}) )
-macro_rules! syntax_assert( ($tok:expr, $filter:pat => $val:expr, $msg:expr) => (
-	match $tok {
+macro_rules! syntax_assert( ($tok:expr, $filter:pat => $val:expr, $msg:expr) => ({
+	let tok = $tok;
+	match tok {
 		$filter => $val,
-		_ => fail!("Syntax Assert failure: {}", $msg)
+		_ => fail!("Syntax Assert failure: {}, got {}", $msg, tok)
 	}
-) )
+}) )
+
+impl ::std::fmt::Show for Token
+{
+	fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+		match *self {
+		TokInval     => write!(f, "TokInval"),
+		TokEof       => write!(f, "TokEof"),
+		TokNumber(ref v) => write!(f, "TokNumber({})", v),
+		TokLine(ref v)   => write!(f, "TokLine({})", v),
+		TokGroup(ref v)  => write!(f, "TokGroup({})", v),
+		TokIdent(ref v)  => write!(f, "TokIdent({})", v),
+		TokMetaOp(ref v)  => write!(f, "TokMetaOp({})", v),
+		TokPreproc(ref v) => write!(f, "TokPreproc({})", v),
+		TokNewline   => write!(f, "TokNewline"),
+		TokComma     => write!(f, "TokComma"),
+		TokColon     => write!(f, "TokColon"),
+		TokAssign    => write!(f, "TokAssign"),
+		TokPlus      => write!(f, "TokPlus"),
+		TokMinus     => write!(f, "TokMinus"),
+		TokStar      => write!(f, "TokStar"),
+		TokSlash     => write!(f, "TokSlash"),
+		TokBackslash => write!(f, "TokBackslash"),
+		TokSqOpen    => write!(f, "TokSqOpen"),
+		TokSqClose   => write!(f, "TokSqClose"),
+		TokParenOpen => write!(f, "TokParenOpen"),
+		TokParenClose=> write!(f, "TokParenClose"),
+		
+		TokComment => write!(f, "TokComment"),
+		}
+	}
+}
 
 impl<'rl> Lexer<'rl>
 {
@@ -121,11 +154,9 @@ impl<'rl> Lexer<'rl>
 	}
 	fn read_number(&mut self, base: uint) -> u64 {
 		let mut val = 0;
-		debug!("read_number: (base={})", base);
 		loop
 		{
 			let ch = parse_try!(self._getc(), val);
-			debug!("read_number: ch='{}', val={}", ch, val);
 			match ch.to_digit(base) {
 			Some(d) => {
 				val *= base as u64;
@@ -148,8 +179,8 @@ impl<'rl> Lexer<'rl>
 			ch = getc!(TokEof);
 		}
 		
-		debug!("get_token_int: ch='{}'", ch);
-		match ch
+		//debug!("get_token_int: ch='{}'", ch);
+		let ret = match ch
 		{
 		';' => {
 			self.read_to_eol();
@@ -159,6 +190,10 @@ impl<'rl> Lexer<'rl>
 		'@' => TokGroup( self.read_ident() ),
 		'%' => TokPreproc( self.read_ident() ),
 		'#' => TokMetaOp( self.read_ident() ),
+		
+		',' => TokComma,
+		':' => TokColon,
+		'=' => TokAssign,
 		
 		'+' => TokPlus,
 		'-' => TokMinus,
@@ -187,7 +222,7 @@ impl<'rl> Lexer<'rl>
 				TokNumber( self.read_number(8) )
 				},
 			'x' => TokNumber( self.read_number(16) ),
-			'b' => TokNumber( self.read_number(16) ),
+			'b' => TokNumber( self.read_number(2) ),
 			_ => TokNumber(0)
 			}
 			},
@@ -203,14 +238,17 @@ impl<'rl> Lexer<'rl>
 			debug!("Invalid character '{}'", ch);
 			TokInval
 			}
-		}
+		};
+		debug!("get_token_int: ret={}", ret);
+		return ret;
 	}
 	/// @brief Wraps low-level lexer to ignore comments and handle preprocessor comments
 	pub fn get_token(&mut self) -> Token
 	{
-		if !is_enum!(self.saved_tok None) {
-			return exp_enum!(std::mem::replace(&mut self.saved_tok, None) Some);
-		}
+		match std::mem::replace(&mut self.saved_tok, None) {
+		Some(x) => return x,
+		None => ()
+		};
 		
 		loop {
 			let tok = self.get_token_int();
@@ -218,12 +256,10 @@ impl<'rl> Lexer<'rl>
 			{
 			TokComment => (),
 			TokPreproc(stmt) => {
-				debug!("Preproc '{}'", stmt);
 				match stmt.as_slice()
 				{
 				"line" => {
 					// %line <line>+<unk> <filename>
-					debug!("get_token: Preprocessor - Set line");
 					let line = syntax_assert!(self.get_token_int(), TokNumber(x) => x, "Expected number in %line");
 					syntax_assert!(self.get_token_int(), TokPlus => (), "Expected '+' in %line");
 					let unk = syntax_assert!(self.get_token_int(), TokNumber(x) => x, "Expected number in %line");
@@ -267,7 +303,7 @@ impl<'rl> Parser<'rl>
 		// TODO: Support arithmatic
 		
 		let tok = self.get_token();
-		return exp_enum!(tok TokNumber);
+		return syntax_assert!(tok, TokNumber(x) => x, "get_numeric - Expected number");
 	}
 	
 	fn get_value(&mut self, values: &mut ::cct_mesh::LinkList, unit: &mut ::cct_mesh::Unit)
@@ -285,14 +321,53 @@ impl<'rl> Parser<'rl>
 					1
 				};
 			for i in range(0, count) {
-				values.push( unit.get_link(name.as_slice()) );
+				values.push( unit.get_link(&name) );
 			}
 			},
 		TokGroup(name) => {
-			if self.look_ahead() == TokSqOpen {
+			let group = match unit.get_group(&name) {
+				Some(x) => x,
+				None => fail!("Group @{} is not defined", name)
+				};
+			if self.look_ahead() == TokSqOpen
+			{
+				self.get_token();
+				loop
+				{
+					let start = self.get_numeric();
+					if start >= group.len() as u64 {
+						fail!("Index {} out of range for group @{}", start, name);
+					}
+					if self.look_ahead() != TokColon
+					{
+						// Single
+						values.push( group.get(start as uint).clone() );
+						fail!("TODO: Group single {} #{}", name, start);
+					}
+					else
+					{
+						// Range
+						self.get_token();
+						let end = self.get_numeric();
+						if end >= group.len() as u64 {
+							fail!("Range end {} out of range for group @{}", start, name);
+						}
+						fail!("TODO: Group range{} {}--{}", name, start, end);
+						for i in range(start, end) {
+							debug!("%{}[{}]", name, i);
+						}
+					}
+					let tok = self.get_token();
+					if( tok != TokComma ) {
+						self.put_back(tok);
+						break;
+					}
+				}
 			}
-			else {
+			else
+			{
 				// Entire range
+				fail!("TODO: Group content {}", name);
 			}
 			},
 		_ => fail!("TODO: Syntax errors, get_value")
@@ -306,9 +381,9 @@ impl<'rl> Parser<'rl>
 		if !is_enum!(tok TokIdent(_))
 		{
 			// Get destination line list
+			self.put_back(tok);
 			loop
 			{
-				self.put_back(tok);
 				self.get_value(&mut outputs, unit);
 				tok = self.get_token();
 				if !is_enum!(tok TokComma) { break }
@@ -350,7 +425,7 @@ pub fn load(filename: &str) -> Option<::cct_mesh::Root>
 	// 3. Create mesh root
 	let mut meshroot = ::cct_mesh::Root::new();
 	{
-		let mut curunit = &mut meshroot.rootunit;
+		let mut curunit = meshroot.get_root_unit();
 		
 		// 4. Parse!
 		loop
@@ -361,7 +436,16 @@ pub fn load(filename: &str) -> Option<::cct_mesh::Root>
 			TokNewline => {},
 			TokEof => { println!("EOF"); break },
 			TokMetaOp(name) => {
-				println!("Meta op '{}'", name);
+				match name.as_slice() {
+				"defunit" => {
+					let unitname = syntax_assert!(parser.get_token(), TokIdent(v) => v, "Expected TokIdent after #defunit");
+					curunit = match meshroot.add_unit(&unitname) {
+						Some(x) => x,
+						None => fail!("Redefinition of unit {}", unitname)
+						};
+					},
+				_ => fail!("Unknown meta-op '#{}'", name)
+				}
 				},
 			_ => {
 				parser.put_back(tok);

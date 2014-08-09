@@ -53,7 +53,8 @@ pub struct Unit
 	inputs: LinkList,
 	outputs: LinkList,
 	
-	links: collections::TreeMap<String,Rc<Link>>,	// Definitive list of links
+	links:  collections::TreeMap<String,Rc<Link>>,	// Definitive list of links
+	groups: collections::TreeMap<String,Vec<Rc<Link>>>,
 	
 	visgroups: List<VisGroup>,
 }
@@ -97,17 +98,27 @@ impl core::cmp::Eq for Link
 
 impl Unit
 {
-	pub fn get_link(&mut self, name: &str) -> Rc<Link> {
-		let key = name.to_string();
-		match self.links.find(&key)
+	pub fn get_link(&mut self, name: &String) -> Rc<Link> {
+		match self.links.find(name)
 		{
 		Some(x) => return x.clone(),
 		None => ()
 		}
 		
-		let val = Rc::new( Link { name: name.to_string(), .. Default::default() } );
-		self.links.insert(key, val.clone());
+		let val = Rc::new( Link { name: name.clone(), .. Default::default() } );
+		self.links.insert(name.clone(), val.clone());
 		val
+	}
+	
+	pub fn make_group(&mut self, name: &String, size: uint) {
+		let mut val = Vec::with_capacity(size);
+		for i in range(0,size) {
+			val.push( self.get_link(&format!("{}[{:u}]", name, i)) );
+		}
+		self.groups.insert(name.clone(), val);
+	}
+	pub fn get_group(&self, name: &String) -> Option<&Vec<Rc<Link>>> {
+		return self.groups.find(name)
 	}
 }
 
@@ -115,6 +126,20 @@ impl Root
 {
 	pub fn new() -> Root {
 		Root { ..Default::default() }
+	}
+	
+	pub fn get_root_unit(&mut self) -> &mut Unit {
+		return &mut self.rootunit;
+	}
+	pub fn add_unit(&mut self, name: &String) -> Option<&mut Unit> {
+		match self.units.find_mut(name)
+		{
+		Some(x) => return None,
+		None => ()
+		}
+		let val = Unit { ..Default::default() };
+		self.units.insert(name.clone(), val);
+		return self.units.find_mut(name);
 	}
 }
 
