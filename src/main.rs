@@ -6,6 +6,9 @@
 #[phase(plugin, link)] extern crate log;
 
 extern crate getopts;
+extern crate std;
+extern crate collections;
+extern crate core;
 
 mod cct_mesh;
 mod parse;
