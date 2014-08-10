@@ -425,7 +425,7 @@ pub fn load(filename: &str) -> Option<::cct_mesh::Root>
 	// 3. Create mesh root
 	let mut meshroot = ::cct_mesh::Root::new();
 	{
-		let mut curunit = meshroot.get_root_unit();
+		let curunit: Option<&mut ::cct_mesh::Unit> = None;
 		
 		// 4. Parse!
 		loop
@@ -440,7 +440,7 @@ pub fn load(filename: &str) -> Option<::cct_mesh::Root>
 				"defunit" => {
 					let unitname = syntax_assert!(parser.get_token(), TokIdent(v) => v, "Expected TokIdent after #defunit");
 					curunit = match meshroot.add_unit(&unitname) {
-						Some(x) => x,
+						Some(x) => Some(x),
 						None => fail!("Redefinition of unit {}", unitname)
 						};
 					},
@@ -449,7 +449,7 @@ pub fn load(filename: &str) -> Option<::cct_mesh::Root>
 				},
 			_ => {
 				parser.put_back(tok);
-				parser.do_line(curunit);
+				parser.do_line(match curunit { Some(ref x) => *x, None => meshroot.get_root_unit()});
 				}
 			}
 		}
