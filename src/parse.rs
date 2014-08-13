@@ -433,7 +433,8 @@ impl<'rl> Parser<'rl>
 	}
 	
 	/// Read a single value (link, group, constant, or an embedded element)
-	fn get_value(&mut self, values: &mut ::cct_mesh::LinkList, unit: &mut ::cct_mesh::Unit)
+	#[allow(deprecated)] // < for .get
+	fn get_value(&mut self, values: &mut ::cct_mesh::LinkList, meshroot: &::cct_mesh::Root, unit: &mut ::cct_mesh::Unit)
 	{
 		let tok = self.get_token();
 		match tok
@@ -447,6 +448,7 @@ impl<'rl> Parser<'rl>
 				else {
 					1
 				};
+			debug!("get_value: Line '{}' * {}", name, count);
 			for i in range(0, count) {
 				values.push( unit.get_link(&name) );
 			}
@@ -468,7 +470,7 @@ impl<'rl> Parser<'rl>
 					if self.look_ahead() != TokColon
 					{
 						// Single
-						values.push( group[start as uint].clone() );
+						values.push( group.get(start as uint).clone() );
 						debug!("Group single {} #{}", name, start);
 					}
 					else
@@ -527,6 +529,7 @@ impl<'rl> Parser<'rl>
 				syntax_warn!(self.lexer, "Value exceeds extracted range (0x{:x} > 1<<{})", val, ::std::cmp::max(start,end)+1);
 			}
 			
+			debug!("get_value: Constant {}[{}:{}] * {}", val, start, end, count);
 			for _ in range(0,count) {
 				for i in range_inc(start,end) {
 					values.push( unit.get_constant( (val >> i) & 1 == 1 ) );
@@ -535,10 +538,9 @@ impl<'rl> Parser<'rl>
 			
 			},
 		TokParenOpen => {
-			let mut subele = self.get_element(unit);
+			let (elename, params, inputs) = self.get_element(meshroot, unit);
 			syntax_assert_get!(self, TokParenClose => (), "Expected TokParenClose after sub-element");
-			values.push_all( subele.anon_outputs(unit).as_slice() );
-			unit.append_element( subele );
+			values.extend( unit.append_element( meshroot, elename, params, inputs, None ).move_iter() );
 			},
 		_ => syntax_error!(self.lexer, "Expected TokLine or TokGroup when parsing value, got {}", tok)
 		}
@@ -566,6 +568,9 @@ impl<'rl> Parser<'rl>
 				syntax_assert_get!(self, TokSqClose => (), "Expected TokSqClose after group in connection list");
 				
 				unit.make_group(&name, size as uint);
+				for line in unit.get_group(&name).unwrap().iter() {
+					ret.push( line.clone() );
+				}
 				},
 			_ => fail!("Syntax error - Expected TokLine or TokGroup in connection list, got {}", tok)
 			}
@@ -581,7 +586,7 @@ impl<'rl> Parser<'rl>
 	}
 	
 	/// Read an element (<ELEMENT> <INPUTS>), leaving the inputs unbound
-	fn get_element(&mut self, unit: &mut ::cct_mesh::Unit) -> ::cct_mesh::Element
+	fn get_element(&mut self, meshroot: &::cct_mesh::Root, unit: &mut ::cct_mesh::Unit) -> (String, Vec<u64>, ::cct_mesh::LinkList)
 	{
 		let ident = syntax_assert_get!(self, TokIdent(x) => x, "Expected TokIdent");
 		let params = if self.look_ahead() == TokBraceOpen
@@ -604,21 +609,19 @@ impl<'rl> Parser<'rl>
 				Vec::new()
 			};
 		
-		let inputs = self.get_value_list(unit);
+		let inputs = self.get_value_list(meshroot, unit);
 		
-		let ele = ::cct_mesh::Element::new( ident, params, inputs );
-		
-		return ele;
+		return ( ident, params, inputs );
 	}
 	
 	/// Read a comma-separated list of values
-	fn get_value_list(&mut self, unit: &mut ::cct_mesh::Unit) -> ::cct_mesh::LinkList
+	fn get_value_list(&mut self, meshroot: &::cct_mesh::Root, unit: &mut ::cct_mesh::Unit) -> ::cct_mesh::LinkList
 	{
 		let mut values = ::cct_mesh::LinkList {..Default::default()};
 		
 		loop
 		{
-			self.get_value(&mut values, unit);
+			self.get_value(&mut values, meshroot, unit);
 			let tok = self.get_token();
 			if !is_enum!(tok TokComma) {
 				self.put_back(tok);
@@ -629,14 +632,15 @@ impl<'rl> Parser<'rl>
 	}
 	
 	/// Handle a descriptor line (<outputs> = ELEMENT <inputs>)
-	fn do_line(&mut self, unit: &mut ::cct_mesh::Unit)
+	#[allow(deprecated)]	// < For .get(), as indexing is buggy
+	fn do_line(&mut self, meshroot: &::cct_mesh::Root, unit: &mut ::cct_mesh::Unit)
 	{
 		let outputs = if is_enum!(self.look_ahead() TokIdent(_)) {
 				::cct_mesh::LinkList {..Default::default()}
 			}
 			else {
 				// Get destination line list
-				let v = self.get_value_list(unit);
+				let v = self.get_value_list(meshroot, unit);
 				syntax_assert_get!(self, TokAssign => (), "Expected TokAssign");
 				v
 			};
@@ -644,15 +648,14 @@ impl<'rl> Parser<'rl>
 		// If the next token is an identifier, then it's a typical descriptor
 		if is_enum!(self.look_ahead() TokIdent(_))
 		{
-			let mut ele = self.get_element(unit);
+			let (name,params,inputs) = self.get_element(meshroot, unit);
 			syntax_assert_get!(self, TokNewline => (), "Expected newline after element descriptor");
-			ele.set_outputs( outputs );
-			unit.append_element(ele);
+			unit.append_element(meshroot, name, params, inputs, Some(outputs));
 		}
 		// If it's not, then it's a binding operation
 		else
 		{
-			let inputs = self.get_value_list(unit);
+			let inputs = self.get_value_list(meshroot, unit);
 			syntax_assert_get!(self, TokNewline => (), "Expected newline after rename descriptor");
 			if outputs.len() != inputs.len() {
 				syntax_error!(self.lexer, "Left and right counts don't match when binding ({} != {})",
@@ -662,7 +665,7 @@ impl<'rl> Parser<'rl>
 			// TODO: .bind should check that the lefthand side has not yet been rebound
 			// outputs,inputs: Vec<Rc<Link>>
 			for i in range(0, outputs.len()) {
-				outputs.get(i).borrow_mut().bind( inputs.get(i).borrow().deref() );
+				outputs.get(i).borrow_mut().bind( inputs.get(i) );
 			}
 		}
 	}
@@ -775,7 +778,7 @@ fn handle_meta(parser: &mut Parser, meshroot: &mut ::cct_mesh::Root, state: &mut
 			};
 		},
 	"testcomplete" => {
-		let conditions = parser.get_value_list( state.get_curunit() );
+		let conditions = parser.get_value_list( meshroot, state.get_curunit() );
 		syntax_assert_get!(parser, TokNewline => (), "Expected newline after test completion condition");
 		
 		match state.get_curtest() {
@@ -784,9 +787,9 @@ fn handle_meta(parser: &mut Parser, meshroot: &mut ::cct_mesh::Root, state: &mut
 			}.set_completion(conditions);
 		},
 	"testassert" => {
-		let conditions = parser.get_value_list( state.get_curunit() );
-		let values = parser.get_value_list( state.get_curunit() );
-		let expected = parser.get_value_list( state.get_curunit() );
+		let conditions = parser.get_value_list( meshroot, state.get_curunit() );
+		let values = parser.get_value_list( meshroot, state.get_curunit() );
+		let expected = parser.get_value_list( meshroot, state.get_curunit() );
 		syntax_assert_get!(parser, TokNewline => (), "Expected newline after test case definition");
 		
 		match state.get_curtest() {
@@ -799,9 +802,9 @@ fn handle_meta(parser: &mut Parser, meshroot: &mut ::cct_mesh::Root, state: &mut
 		state.set_curunit( meshroot.get_root_unit() );
 		},
 	"display" => {
-		let conditions = parser.get_value_list( state.get_curunit() );
+		let conditions = parser.get_value_list( meshroot, state.get_curunit() );
 		let text = syntax_assert_get!(parser, TokString(x) => x, "Expected string after condtions in #display");
-		let values = parser.get_value_list( state.get_curunit() );
+		let values = parser.get_value_list( meshroot, state.get_curunit() );
 		syntax_assert_get!(parser, TokNewline => (), "Expected newline after values in #display");
 		
 		state.get_curunit().append_display(conditions, text, values);
@@ -813,7 +816,7 @@ fn handle_meta(parser: &mut Parser, meshroot: &mut ::cct_mesh::Root, state: &mut
 		warn!("TODO: Display blocks (#block \"{}\")", name);
 		},
 	"breakpoint" => {
-		let conditions = parser.get_value_list( state.get_curunit() );
+		let conditions = parser.get_value_list( meshroot, state.get_curunit() );
 		let name = syntax_assert_get!(parser, TokString(x) => x, "Expected string after conditions in #breakpoint");
 		syntax_assert_get!(parser, TokNewline => (), "Expected newline after name in #breakpoint");
 		
@@ -857,7 +860,7 @@ pub fn load(filename: &str) -> Option<::cct_mesh::Root>
 			TokMetaOp(name) => handle_meta(&mut parser, &mut meshroot, &mut state,  name),
 			_ => {
 				parser.put_back(tok);
-				parser.do_line( state.get_curunit() );
+				parser.do_line( &meshroot, state.get_curunit() );
 				}
 			}
 		}
