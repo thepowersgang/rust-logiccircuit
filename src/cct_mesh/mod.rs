@@ -27,11 +27,9 @@ pub type LinkRef = Rc<RefCell<Link>>;
 pub type LinkWRef = Weak<RefCell<Link>>;
 pub type LinkList = Vec<LinkRef>;
 
-#[deriving(Default)]
 pub struct Element
 {
-	name: String,
-	params: Vec<uint>,
+	inst: Box<::elements::Element>,
 	inputs: LinkList,
 	outputs: LinkList,
 }
@@ -83,6 +81,8 @@ pub struct Unit
 	disp_items: ::collections::DList<DisplayItem>,
 	
 	visgroups: List<VisGroup>,
+	
+	flattened: Option<Rc<Mesh>>,
 }
 
 struct TestAssert
@@ -109,34 +109,47 @@ pub struct Root
 	tests: ::collections::TreeMap<String,Test>,
 }
 
-enum NodeRef
+#[deriving(Copy)]
+#[deriving(Clone)]
+pub enum NodeRef
 {
 	NodeZero,
 	NodeOne,
 	NodeId(uint),
 }
 // Represents a flattened (executable) mesh
+#[deriving(Clone)]
 pub struct Mesh
 {
-	nodes: Vec<Node>,	// Aka LinkValues
+	pub nodes: Vec<Node>,	// Aka LinkValues
 	inputs: Vec<NodeRef>,
 	outputs: Vec<NodeRef>,
-	elements: Vec<ElementInst>,
+	pub elements: Vec<ElementInst>,
 }
 
 /// Flattened mesh items
+#[deriving(Clone)]
 pub struct ElementInst
 {
-	inst: Box<::elements::Element>,
-	inputs: Vec<NodeRef>,
-	outputs: Vec<NodeRef>,
+	pub inst: Box<::elements::Element>,
+	pub inputs: Vec<NodeRef>,
+	pub outputs: Vec<NodeRef>,
 }
+impl Clone for Box<::elements::Element>
+{
+	fn clone(&self) -> Box<::elements::Element> {
+		return self.dup();
+	}
+}
+
 #[deriving(Default)]
 #[deriving(Clone)]
 pub struct Node
 {
 	names: Vec<String>
 }
+
+macro_rules! exp( ($val:expr, $e:pat => $res:expr) => (match $val { $e=>$res, _=>fail!("exp!")}))
 
 impl<T> Default for List<T>
 {
@@ -169,16 +182,17 @@ impl Link
 		//debug!("Bound link {} to {}'s value", self.name, other.name);
 	}
 	pub fn tag(&mut self, value: uint) -> bool {
-		//debug!("Tagging '{}' to {}", self.name, value);
 		if self.aliased != None {
 			fail!("Link '{}' already aliased to #{}", self.name, self.aliased.unwrap());
 		}
 		assert!( self.aliased == None );
 		match self.reflink {
-		Some(_) => {
+		Some(ref l) => {
+			debug!("Link '{}' refers to '{}'", self.name, l.upgrade().unwrap().borrow().name);
 			false
 			},
 		None => {
+			debug!("Tagging '{}' to {}", self.name, value);
 			self.aliased = Some(value);
 			true
 			}
@@ -190,13 +204,25 @@ impl Link
 		{
 			match self.reflink
 			{
-			Some(ref other) => {
-				let other_rc = other.upgrade().unwrap();
-				let other_link = other_rc.borrow();
-				self.aliased = other_link.aliased;
-				debug!("Indirect tag of '{}' from '{}' ({})",
-					self.name, other_link.name, self.aliased);
-				assert!(self.aliased != None);
+			Some(ref other_ref) => {
+				let mut other = other_ref.clone();
+				loop
+				{
+					let other_rc = other.upgrade().unwrap();
+					let other_link = other_rc.borrow();
+					if other_link.reflink.is_none()
+					{
+						self.aliased = other_link.aliased;
+						debug!("Indirect tag of '{}' from '{}' ({})",
+							self.name, other_link.name, self.aliased);
+						assert!(self.aliased != None);
+						break;
+					}
+					else
+					{
+						other = exp!(other_link.reflink, Some(ref x) => x.clone());
+					}
+				}
 				},
 			None => {}
 			}
@@ -209,25 +235,25 @@ impl Link
 impl ::core::fmt::Show for ::core::cell::RefCell<::cct_mesh::Link>
 {
 	fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-		write!(f, "{}", self.borrow().name)
+		let link = self.borrow();
+		if link.name.as_slice() == "" {
+			write!(f, "<anon>")
+		}
+		else {
+			write!(f, "{}", self.borrow().name)
+		}
 	}
 }
 
-impl Element
+impl ::core::fmt::Show for NodeRef
 {
-	pub fn new(name: String, args: Vec<u64>, inputs: LinkList) -> Element {
-		let params = Vec::from_fn(args.len(), |i| args[i] as uint);
-		Element { name: name, params: params, inputs: inputs, ..Default::default() }
-	}
-	
-	pub fn set_outputs(&mut self, outputs: LinkList) -> bool {
-		// TODO: Check counts and error
-		self.outputs = outputs;
-		return true;
-	}
-	pub fn anon_outputs(&mut self, unit: &mut Unit) -> LinkList {
-		self.outputs = unit.make_anon_links(1);
-		return self.outputs.clone();
+	fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+		match *self
+		{
+		NodeOne => write!(f, "NodeOne"),
+		NodeZero => write!(f, "NodeZero"),
+		NodeId(id) => write!(f, "NodeId({})", id),
+		}
 	}
 }
 
@@ -255,9 +281,19 @@ impl Test
 	}
 }
 
-macro_rules! exp( ($val:expr, $e:pat => $res:expr) => (match $val { $e=>$res, _=>fail!("exp!")}))
 impl Unit
 {
+	pub fn new(name: &String) -> Unit {
+		Unit {
+			name: name.clone(),
+			link_zero: Unit::make_link( "=0".to_string() ),
+			link_one:  Unit::make_link( "=1".to_string() ),
+			..Default::default()
+			}
+	}
+	fn make_link(name: String) -> LinkRef {
+		Rc::new(RefCell::new( Link { name: name, .. Default::default() } ))
+	}
 	pub fn get_constant(&mut self, is_one: bool) -> LinkRef {
 		if is_one {
 			self.link_one.clone()
@@ -273,16 +309,12 @@ impl Unit
 		None => ()
 		}
 		
-		let val = Rc::new(RefCell::new( Link { name: name.clone(), .. Default::default() } ));
+		let val = Unit::make_link(name.clone());
 		self.links.insert(name.clone(), val.clone());
 		val
 	}
 	fn make_anon_link(&mut self) -> LinkRef {
-		self.anon_links.push(Rc::new( RefCell::new( Link {
-			name:"".to_string(),
-			..Default::default()
-			} )
-			));
+		self.anon_links.push( Unit::make_link("".to_string()) );
 		return self.anon_links.back().unwrap().clone();
 	}
 	pub fn make_anon_links(&mut self, count: uint) -> LinkList {
@@ -351,18 +383,19 @@ impl Unit
 			out
 			},
 		None => {
-			let mut ele = Element::new(name, params, inputs);
-			
-			let rv = if outputs == None {
-					ele.anon_outputs(self)
-				}
-				else {
-					let o = outputs.unwrap();
-					ele.set_outputs(o.clone());
-					o
+			let ele = match ::elements::create(&name, &params, inputs.len()) {
+				Ok(e) => e,
+				Err(msg) => fail!("Error in creating '{}' - {}", name, msg),
 				};
-			self.elements.push( ele );
-			rv
+			
+			let out = match outputs { Some(o) => o, None => self.make_anon_links( ele.get_outputs(inputs.len()) ) };
+			
+			self.elements.push( Element {
+				inst: ele,
+				inputs: inputs,
+				outputs: out.clone(),
+				});
+			out
 			}
 		}
 	}
@@ -380,10 +413,10 @@ impl Unit
 			});
 	}
 	
-	pub fn flatten(&self, root: &Root) -> Mesh
+	pub fn flatten(&mut self, pre_flattened: &Map<String,Rc<Mesh>>) -> Rc<Mesh>
 	{
 		debug!("Flattening unit '{}'", self.name);
-		let subunits = self.flatten_subunits(root);
+		let subunits = self.flatten_subunits(pre_flattened);
 		
 		let mut n_eles = 0u;
 		let mut n_links = 0u;
@@ -411,14 +444,27 @@ impl Unit
 		debug!("n_eles = {}, n_links = {}", n_eles, n_links);
 		
 		// Count elements and nodes from sub units
-		for subu in subunits.iter()
+		for (i,subu_ref) in self.subunits.iter().enumerate()
 		{
+			let subu = &subunits[i];
 			n_eles += subu.elements.len();
 			// 1. Assert that no input connects directly to output
 			// 2. Add link count, subtract nInput and nOutput
-			n_links += subu.nodes.len() - subu.inputs.len() - subu.outputs.len();
+			n_links += subu.nodes.len();
+			debug!("SubUnit #i {}", subu_ref.name);
+			for e in subu.inputs.iter() {
+				debug!("in #{}", *e);
+				match *e { NodeId(_) => { n_links -= 1; }, _=>{}}
+			}
+			for e in subu.outputs.iter() {
+				debug!("out #{}", *e);
+				match *e { NodeId(_) => { n_links -= 1; }, _=>{}}
+			}
+			debug!("Subunit : {} nodes ({} input, {} output), n_links = {}",
+				subu.nodes.len(), subu.inputs.len(), subu.outputs.len(),
+				n_links);
 		}
-		debug!("w/ subunits n_eles = {}, n_links = {}", n_eles, n_links);
+		debug!("w/ subunits n_eles = {}, n_links = {}, n_local_links = {}", n_eles, n_links, n_local_links);
 		
 		// Add names to nodes
 		let mut nodes = Vec::<Node>::from_elem(n_links, Node{..Default::default()});
@@ -438,7 +484,7 @@ impl Unit
 		for ele in self.elements.iter()
 		{
 			let inst = ElementInst {
-				inst: ::elements::create(&ele.name, &ele.params, ele.inputs.len()),
+				inst: ele.inst.dup(),
 				inputs:  self.linklist_to_noderefs(&ele.inputs),
 				outputs: self.linklist_to_noderefs(&ele.outputs),
 				};
@@ -453,31 +499,54 @@ impl Unit
 			let flattened = &subunits[i];
 			let inputs = self.linklist_to_noderefs( &subu.inputs );
 			let outputs = self.linklist_to_noderefs( &subu.outputs );
-			let mut aliases = Vec::<Option<uint>>::with_capacity( flattened.nodes.len() );
+			let mut aliases = Vec::<Option<NodeRef>>::from_elem( flattened.nodes.len(), None );
 			
-			debug!("> Import subunit {}", subu.name);
+			info!("> Import subunit {}", subu.name);
 			assert_eq!( flattened.inputs.len(),  inputs.len()  );
 			assert_eq!( flattened.outputs.len(), outputs.len() );
 			for (j,noderef) in flattened.inputs.iter().enumerate()
 			{
 				let inner_node = exp!(*noderef, NodeId(id) => id);
-				let outer_node = exp!(inputs[j], NodeId(id) => id);
-				*(aliases.get_mut(inner_node)) = Some( outer_node );
+				debug!("Alias inner #{} to outer {} (input)", inner_node, inputs[j]);
+				*(aliases.get_mut(inner_node)) = Some(inputs[j]);
 			}
 			for (j,noderef) in flattened.outputs.iter().enumerate()
 			{
-				*(aliases.get_mut(exp!(*noderef, NodeId(id) => id))) = Some( exp!(outputs[j], NodeId(id) => id) );
+				let inner_node = exp!(*noderef,   NodeId(id) => id);
+				debug!("Alias inner #{} to outer {} (output)", inner_node, outputs[j]);
+				*(aliases.get_mut(inner_node)) = Some( outputs[j] );
 			}
 			
 			// Iterate
-			for alias in aliases.mut_iter()
+			let mut unbound_nodes = 0u;
+			for (j,alias) in aliases.mut_iter().enumerate()
 			{
-				if *alias == None {
-					*alias = Some(bind_node_idx);
+				if alias.is_none() {
+					debug!("Alias inner #{} to outer #NodeId({}) (int)", j, bind_node_idx);
+					*alias = Some( NodeId(bind_node_idx) );
 					bind_node_idx += 1;
+					unbound_nodes += 1;
 				}
 			}
+			debug!("{} unbound nodes", unbound_nodes);
+			
+			// Import elements
+			for ele in flattened.elements.iter()
+			{
+				// TODO:
+				//debug!("Instance of {}, inputs", ele.inst.name());
+				let ele_inputs  = self.noderefs_aliased(&ele.inputs,  &aliases);
+				//debug!("Instance of {}, outputs", ele.inst.name());
+				let ele_outputs = self.noderefs_aliased(&ele.outputs, &aliases);
+				let inst = ElementInst {
+					inst: ele.inst.dup(),
+					inputs:  ele_inputs,
+					outputs: ele_outputs,
+					};
+				elements.push( inst );
+			}
 		}
+		assert!(bind_node_idx == nodes.len());
 		
 		// Unit inputs/outputs
 		let mut inputs  = Vec::<NodeRef>::with_capacity( self.inputs.len() );
@@ -489,18 +558,33 @@ impl Unit
 			outputs.push( NodeId( link.borrow().get_alias().unwrap() ) );
 		}
 		
-		debug!("'{}' flattened: {} nodes, {} elements", self.name, nodes.len(), elements.len());
-		return Mesh {
+		info!("'{}' flattened: {} nodes, {} elements", self.name, nodes.len(), elements.len());
+		let ret = Rc::new( Mesh {
 			nodes: nodes,
 			inputs: inputs,
 			outputs: outputs,
 			elements: elements,
-		};
+			} );
+		self.flattened = Some( ret.clone() );
+		return ret;
 	}
-	fn flatten_subunits(&self, root: &Root) -> Vec<Mesh> {
+	fn flatten_subunits(&self, pre_flattened: &Map<String,Rc<Mesh>>) -> Vec<Rc<Mesh>> {
 		let mut ret = Vec::with_capacity(self.subunits.len());
-		for unitref in self.subunits.iter() {
-			ret.push( root.units.find(&unitref.name).unwrap().flatten(root) );
+		for unitref in self.subunits.iter()
+		{
+			let unit = match pre_flattened.find(&unitref.name) {
+				Some(x) => x.clone(),
+				None => fail!("BUG - Subunit '{}' referenced by '{}' not yet converted", unitref.name, self.name),
+				};
+			ret.push( unit );
+		}
+		return ret;
+	}
+	fn get_subunits(&self) -> Vec<String> {
+		let mut ret = Vec::with_capacity(self.subunits.len());
+		for unitref in self.subunits.iter()
+		{
+			ret.push( unitref.name.clone() );
 		}
 		return ret;
 	}
@@ -522,7 +606,33 @@ impl Unit
 		}
 		return rv;
 	}
+	fn noderefs_aliased(&self, innodes: &Vec<NodeRef>, aliases: &Vec<Option<NodeRef>>) -> Vec<NodeRef>
+	{
+		let mut rv = Vec::with_capacity(innodes.len());
+		for (i,node) in innodes.iter().enumerate()
+		{
+			let nr = match *node
+				{
+				NodeId(id) => {
+					if id >= aliases.len() {
+						fail!("BUG - Node {} (idx {}) not in aliases table (only {} entries)",
+							id, i, aliases.len());
+					}
+					if aliases[id].is_none() {
+						fail!("BUG - Node {} (idx {}) was not aliased", id, i);
+					}
+					aliases[id].unwrap()
+					},
+				NodeZero => NodeZero,
+				NodeOne  => NodeOne,
+				};
+			rv.push( nr );
+		}
+		return rv;
+	}
 }
+
+type Flatmap = ::collections::TreeMap<String,Rc<Mesh>>;
 
 impl Root
 {
@@ -539,7 +649,7 @@ impl Root
 		Some(_) => return None,
 		None => ()
 		}
-		let val = Unit { name: name.clone(), ..Default::default() };
+		let val = Unit::new(name);
 		self.units.insert(name.clone(), val);
 		return self.units.find_mut(name);
 	}
@@ -558,8 +668,27 @@ impl Root
 		return self.tests.find_mut(name);
 	}
 	
-	pub fn flatten_root(&self) -> Mesh {
-		self.rootunit.flatten(self)
+	pub fn flatten_unit(&mut self, flat_units: &mut Flatmap, name: &String)
+	{
+		for su_name in self.units.find(name).unwrap().get_subunits().iter()
+		{
+			if flat_units.find(su_name).is_none()
+			{
+				self.flatten_unit(flat_units, su_name);
+			}
+		}
+		let unit = self.units.find_mut(name).unwrap();
+		let flat = unit.flatten(&*flat_units);
+		flat_units.insert( name.clone(), flat );
+	}
+	pub fn flatten_root(&mut self) -> Mesh
+	{
+		let mut flat_units = ::collections::TreeMap::new();
+		for name in self.rootunit.get_subunits().iter()
+		{
+			self.flatten_unit( &mut flat_units, name );
+		}
+		self.rootunit.flatten(&flat_units).deref().clone()
 	}
 }
 

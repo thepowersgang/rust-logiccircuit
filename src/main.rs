@@ -1,6 +1,7 @@
 //
 //
 //
+#![feature(globs)]
 #![feature(macro_rules)]
 #![feature(phase)]
 #[phase(plugin, link)] extern crate log;
@@ -13,6 +14,7 @@ extern crate core;
 mod cct_mesh;
 mod parse;
 mod elements;
+mod simulator;
 
 fn main()
 {
@@ -39,9 +41,20 @@ fn main()
 	// 2. Load circuit file
 	let mesh = parse::load( args.free[1].as_slice() );
 	
-	let flat = mesh.unwrap().flatten_root();
+	let mut flat = mesh.unwrap().flatten_root();
 
 	// 3. Simulation/Visualisation
+	let mut sim = ::simulator::Engine::new( &mut flat );
+	for i in range(0, 20u)
+	{
+		sim.tick();
+		
+		if sim.check_breakpoints()
+		{
+			println!("Breakpoint hit.");
+		}
+		sim.show_display();
+	}
 }
 
 fn print_usage(program_name: &str, opts: &[getopts::OptGroup])
