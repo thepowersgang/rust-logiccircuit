@@ -10,11 +10,19 @@ extern crate getopts;
 extern crate std;
 extern crate collections;
 extern crate core;
+extern crate glob;
 
 mod cct_mesh;
 mod parse;
 mod elements;
 mod simulator;
+
+enum TestStatus
+{
+	TestPass(uint),
+	TestFail(uint, String),
+	TestTimeout(uint),
+}
 
 fn main()
 {
@@ -39,22 +47,83 @@ fn main()
 	}
 	
 	// 2. Load circuit file
-	let mesh = parse::load( args.free[1].as_slice() );
+	let mut mesh = match parse::load( args.free[1].as_slice() ) {
+		Some(x) => x,
+		None => fail!("Parsing of {} failed", args.free[1])
+		};
 	
-	let mut flat = mesh.unwrap().flatten_root();
+	// - Flatten root (also flattens all other units)
+	let flat = mesh.flatten_root();
 
 	// 3. Simulation/Visualisation
-	let mut sim = ::simulator::Engine::new( &mut flat );
-	for i in range(0, 20u)
+	if args.opt_present("test")
+	{
+		// Only flatten tests if required
+		// TODO: Pass a glob to this function so it doesn't flatten unless it will be run
+		mesh.flatten_tests();
+		
+		let pat = ::glob::Pattern::new( match args.opt_str("test-glob"){Some(ref v)=>v.as_slice(),_=>"*"} );
+		
+		// Unit test!
+		for (name,test) in mesh.iter_tests()
+		{
+			if pat.matches(name.as_slice())
+			{
+				println!("TEST: '{}'", name);
+				let res = run_test(test);
+				match res
+				{
+				TestPass(cyc) => println!("- PASS ({}/{} cycles)", cyc, test.exec_limit()),
+				TestFail(cyc,msg) => println!("- FAIL ({} cycles): {}", cyc, msg),
+				TestTimeout(cyc) => println!("- TIMEOUT ({} cycles)", cyc),
+				}
+			}
+		}
+	}
+	else
+	{
+		let mut sim = ::simulator::Engine::new( &flat );
+		for i in range(0, 20u)
+		{
+			sim.tick();
+			
+			if sim.check_breakpoints()
+			{
+				println!("Breakpoint hit.");
+			}
+			sim.show_display();
+		}
+	}
+}
+
+fn run_test(test: &cct_mesh::flat::Test) -> TestStatus
+{
+	let mut sim = ::simulator::Engine::new( test.get_mesh() );
+	for ticknum in range(0, test.exec_limit())
 	{
 		sim.tick();
 		
-		if sim.check_breakpoints()
+		if sim.are_set(test.get_completion(), true)
 		{
-			println!("Breakpoint hit.");
+			return TestPass(ticknum);
 		}
-		sim.show_display();
+		
+		// Check assertions
+		for (ass_idx,assert) in test.iter_asserts().enumerate()
+		{
+			if sim.are_set(&assert.conditions, true)
+			{
+				let have = sim.get_values(&assert.values);
+				let exp  = sim.get_values(&assert.expected);
+				
+				if have != exp
+				{
+					return TestFail(ticknum, format!("Assertion #{} failed (line {})", ass_idx, assert.line));
+				}
+			}
+		}
 	}
+	TestTimeout(test.exec_limit())
 }
 
 fn print_usage(program_name: &str, opts: &[getopts::OptGroup])

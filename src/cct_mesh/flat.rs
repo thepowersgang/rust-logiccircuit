@@ -33,46 +33,118 @@ pub struct Mesh
 	pub elements: Vec<ElementInst>,
 	pub inputs: Vec<NodeRef>,
 	pub outputs: Vec<NodeRef>,
+	
+	pub breakpoints: Vec<Breakpoint>,
+	pub dispitems: Vec<Display>,
 }
 
 pub struct Test
 {
+	unit: ::std::rc::Rc<Mesh>,
 	exec_limit:	uint,
 	completion: Vec<NodeRef>,
 	assertions: Vec<TestAssert>,
 }
 
-struct TestAssert
+pub struct TestAssert
 {
-	line:	uint,
-	conditions: Vec<NodeRef>,
-	values: Vec<NodeRef>,
-	expected: Vec<NodeRef>,
+	pub line: uint,
+	pub conditions: Vec<NodeRef>,
+	pub values: Vec<NodeRef>,
+	pub expected: Vec<NodeRef>,
 }
 
+#[deriving(Clone)]
 pub struct Display
 {
 	condition: Vec<NodeRef>,
-	values: Vec<NodeRef>,
 	text: String,
+	values: Vec<NodeRef>,
 }
 
+#[deriving(Clone)]
 pub struct Breakpoint
 {
 	name: String,
-	conds: Vec<NodeRef>,
+	pub conds: Vec<NodeRef>,
 }
 
 impl Mesh
 {
 	//pub fn new( nodes: Vec<Node>, elements: Vec<ElementInst>, inputs: &super::LinkList, outputs: &super::LinkList ) -> Mesh
-	pub fn new( n_nodes: uint, elements: Vec<ElementInst>, inputs: &super::LinkList, outputs: &super::LinkList ) -> Mesh
+	pub fn new( n_nodes: uint, n_eles: uint, n_bps: uint, n_disp: uint, inputs: &super::LinkList, outputs: &super::LinkList ) -> Mesh
 	{
 		Mesh {
 			n_nodes: n_nodes,
-			elements: elements,
+			elements: Vec::with_capacity(n_eles),
 			inputs:  linklist_to_noderefs(inputs),
 			outputs: linklist_to_noderefs(outputs),
+			
+			breakpoints: Vec::with_capacity(n_bps),
+			dispitems: Vec::with_capacity(n_disp),
+		}
+	}
+	
+	pub fn push_ele(&mut self, ele: ElementInst) {
+		self.elements.push( ele );
+	}
+	pub fn push_disp(&mut self, disp: Display) {
+		self.dispitems.push( disp );
+	}
+	pub fn push_breakpoint(&mut self, bp: Breakpoint) {
+		self.breakpoints.push( bp );
+	}
+}
+
+impl Test
+{
+	pub fn new(flat: ::std::rc::Rc<Mesh>, exec_limit: uint, completion: Vec<NodeRef>, assertions: Vec<TestAssert>) -> Test {
+		Test {
+			exec_limit: exec_limit,
+			unit: flat,
+			completion: completion,
+			assertions: assertions,
+			}
+	}
+	
+	pub fn exec_limit(&self) -> uint { self.exec_limit }
+	pub fn get_mesh(&self) -> &Mesh { self.unit.deref() }
+	pub fn get_completion(&self) -> &Vec<NodeRef> { &self.completion }
+	pub fn iter_asserts(&self) -> ::core::slice::Items<::cct_mesh::flat::TestAssert>
+	{
+		self.assertions.iter()
+	}
+}
+
+impl TestAssert
+{
+	pub fn new(line: uint, conds: Vec<NodeRef>, have: Vec<NodeRef>, exp: Vec<NodeRef>) -> TestAssert {
+		TestAssert {
+			line: line,
+			conditions: conds,
+			values: have,
+			expected: exp,
+		}
+	}
+}
+
+impl Display
+{
+	pub fn new(text: String, conds: Vec<NodeRef>, values: Vec<NodeRef>) -> Display {
+		Display {
+			condition: conds,
+			text: text,
+			values: values,
+		}
+	}
+}
+
+impl Breakpoint
+{
+	pub fn new(name: String, conds: Vec<NodeRef>) -> Breakpoint {
+		Breakpoint {
+			name: name,
+			conds: conds,
 		}
 	}
 }

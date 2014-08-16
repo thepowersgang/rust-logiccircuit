@@ -7,7 +7,6 @@ use std::rc::Rc;
 use std::rc::Weak;
 use std::cell::RefCell;
 use std::default::Default;
-use std::collections::Deque;
 
 use cct_mesh::flat::NodeRef;
 use cct_mesh::flat::NodeId;
@@ -24,13 +23,13 @@ struct Link
 {
 	name: String,
 	reflink: Option<LinkWRef>,
-	aliases: ::collections::DList<LinkWRef>,
 	aliased: Option<uint>,	// Used during node counting
 }
 
 pub type LinkRef = Rc<RefCell<Link>>;
 pub type LinkWRef = Weak<RefCell<Link>>;
 pub type LinkList = Vec<LinkRef>;
+type Flatmap = ::collections::TreeMap<String,Rc<flat::Mesh>>;
 
 pub struct Element
 {
@@ -39,16 +38,16 @@ pub struct Element
 	outputs: LinkList,
 }
 
-#[deriving(Default)]
-struct VisGroup
-{
-	name: String,
-	elements: ::collections::DList<Element>
-}
+//#[deriving(Default)]
+//struct VisGroup
+//{
+//	name: String,
+//	elements: ::collections::DList<Element>
+//}
 
 struct Breakpoint
 {
-	condition: LinkList,
+	conds: LinkList,
 	name: String,
 }
 
@@ -84,7 +83,7 @@ pub struct Unit
 	breakpoints: ::collections::DList<Breakpoint>,
 	disp_items: ::collections::DList<DisplayItem>,
 	
-	visgroups: ::collections::DList<VisGroup>,
+	//visgroups: ::collections::DList<VisGroup>,
 	
 	flattened: Option<Rc<flat::Mesh>>,
 }
@@ -112,6 +111,9 @@ pub struct Root
 	rootunit: Unit,
 	units: ::collections::TreeMap<String,Unit>,
 	tests: ::collections::TreeMap<String,Test>,
+	
+	flat_units: Flatmap,
+	flat_tests: ::collections::TreeMap<String,flat::Test>,
 }
 
 impl Clone for Box<::elements::Element>
@@ -242,7 +244,7 @@ impl Default for Unit
 			
 			breakpoints: ::collections::DList::new(),
 			disp_items: ::collections::DList::new(),
-			visgroups: ::collections::DList::new(),
+			//visgroups: ::collections::DList::new(),
 			flattened: None,
 		}
 	}
@@ -375,7 +377,7 @@ impl Unit
 	}
 	pub fn append_breakpoint(&mut self, name: String, cond: LinkList) {
 		self.breakpoints.push( Breakpoint {
-			condition: cond,
+			conds: cond,
 			name: name,
 			});
 	}
@@ -404,23 +406,32 @@ impl Unit
 		}
 		let n_local_links = n_links;
 		
+		let mut n_bps  = self.breakpoints.len();
+		let mut n_disp = self.disp_items.len();
+		
 		debug!("n_eles = {}, n_links = {}", n_eles, n_links);
 		
 		// Count elements and nodes from sub units
 		for (subu_ref,subu) in zip!( self.subunits.iter(), subunits.iter() )
 		{
+			// Add element count
 			n_eles += subu.elements.len();
-			// 1. Assert that no input connects directly to output
-			// 2. Add link count, subtract nInput and nOutput
+			// Add node count, ignoring inputs and outputs
 			n_links += subu.n_nodes;
 			debug!("SubUnit #{} - {} in, {} out", subu_ref.name, subu.inputs.len(), subu.outputs.len());
 			for (i,e) in chain!( subu.inputs.iter().enumerate() .. subu.outputs.iter().enumerate() ) {
 				debug!("ext {}=#{}", i, *e);
 				match *e { NodeId(_) => { n_links -= 1; }, _=>{}}
 			}
+			// Add breakpoints and display items
+			n_bps += subu.breakpoints.len();
+			n_disp += subu.dispitems.len();
 		}
-		debug!("w/ subunits n_eles = {}, n_links = {}, n_local_links = {}", n_eles, n_links, n_local_links);
+		debug!("w/ subunits n_eles={}, n_links={}, n_bps={}, n_disp={}",
+			n_eles, n_links, n_bps, n_disp);
 		
+		let mut ret = flat::Mesh::new(n_links, n_eles, n_bps, n_disp, &self.inputs, &self.outputs);
+
 		/*
 		// Add names to nodes
 		// - TODO: This is never propagated, it uses too much memory to do so. Maybe remove it?
@@ -438,9 +449,7 @@ impl Unit
 		debug!("- Links added");
 		*/
 		
-		
 		// Add elements
-		let mut elements = Vec::<flat::ElementInst>::with_capacity(n_eles);
 		for ele in self.elements.iter()
 		{
 			debug!(" Element '{}'", ele.inst.name());
@@ -449,22 +458,40 @@ impl Unit
 				inputs:  flat::linklist_to_noderefs(&ele.inputs),
 				outputs: flat::linklist_to_noderefs(&ele.outputs),
 				};
-			elements.push( inst );
+			ret.push_ele( inst );
 		}
 		debug!("- Elements added");
+		// Add breakpoints
+		for bp in self.breakpoints.iter()
+		{
+			ret.push_breakpoint( flat::Breakpoint::new(
+				bp.name.clone(),
+				flat::linklist_to_noderefs(&bp.conds)
+				) );
+		}
+		// Add display items
+		for di in self.disp_items.iter()
+		{
+			ret.push_disp( flat::Display::new(
+				di.text.clone(),
+				flat::linklist_to_noderefs(&di.condition),
+				flat::linklist_to_noderefs(&di.values),
+				) );
+		}
 		
 		// Populate from sub-units
 		let mut bind_node_idx = n_local_links;
 		for (i,subu) in self.subunits.iter().enumerate()
 		{
-			bind_node_idx += self.flatten_merge_subunit(&mut elements, subunits.get(i).deref(), subu, bind_node_idx);
+			bind_node_idx += self.flatten_merge_subunit(&mut ret, subunits.get(i).deref(), subu, bind_node_idx);
 		}
 		assert!(bind_node_idx == n_links);
+		assert!(ret.elements.len() == n_eles);
 		
-		info!("'{}' flattened: {} nodes, {} elements", self.name, bind_node_idx, elements.len());
-		let ret = Rc::new( flat::Mesh::new(bind_node_idx, elements, &self.inputs, &self.outputs) );
-		self.flattened = Some( ret.clone() );
-		return ret;
+		info!("'{}' flattened: {} nodes, {} elements", self.name, n_links, n_eles);
+		let rv = Rc::new( ret );
+		self.flattened = Some( rv.clone() );
+		return rv;
 	}
 	/// Merge a subunit into the flattened element list
 	///
@@ -473,7 +500,7 @@ impl Unit
 	/// @param subu 	- Subunit reference (used for outside node IDs)
 	/// @param bind_node_idx	- ID to use for the next internal node
 	/// @return Number of internal noes
-	fn flatten_merge_subunit(&self, elements: &mut Vec<flat::ElementInst>, flattened: &flat::Mesh, subu: &UnitRef, bind_node_idx: uint) -> uint
+	fn flatten_merge_subunit(&self, mesh: &mut flat::Mesh, flattened: &flat::Mesh, subu: &UnitRef, bind_node_idx: uint) -> uint
 	{
 		let inputs = flat::linklist_to_noderefs( &subu.inputs );
 		let outputs = flat::linklist_to_noderefs( &subu.outputs );
@@ -535,7 +562,7 @@ impl Unit
 				inputs:  ele_inputs,
 				outputs: ele_outputs,
 				};
-			elements.push( inst );
+			mesh.push_ele( inst );
 		}
 		
 		return unbound_nodes;
@@ -591,7 +618,7 @@ impl Unit
 
 impl Test
 {
-	pub fn new(name: &String, exec_limit: uint) -> Unit {
+	pub fn new(name: &String, exec_limit: uint) -> Test {
 		Test {
 			unit: Unit::new( &format!("!TEST:{}",name)),
 			exec_limit: exec_limit,
@@ -620,16 +647,20 @@ impl Test
 			});
 	}
 	
-	pub fn flatten(&mut self) -> flat::Test
+	pub fn flatten(&mut self, flat_units: &Flatmap) -> flat::Test
 	{
-		flat::Test {
-			exec_limit: self.exec_limit,
-			unit: self.unit.flatten(),
-			}
+		let flat = self.unit.flatten(flat_units);
+		let asserts = self.assertions.iter().map( |a|
+			flat::TestAssert::new(
+				a.line,
+				flat::linklist_to_noderefs(&a.conditions),
+				flat::linklist_to_noderefs(&a.values),
+				flat::linklist_to_noderefs(&a.expected),
+				)
+			).collect();
+		flat::Test::new(flat, self.exec_limit, flat::linklist_to_noderefs(&self.completion), asserts)
 	}
 }
-
-type Flatmap = ::collections::TreeMap<String,Rc<flat::Mesh>>;
 
 impl Root
 {
@@ -663,32 +694,55 @@ impl Root
 		None => ()
 		}
 		
-		let val = Test::new(&name, exec_limit);
+		let val = Test::new(name, exec_limit);
 		self.tests.insert(name.clone(), val);
 		return self.tests.find_mut(name);
 	}
 	
-	pub fn flatten_unit(&mut self, flat_units: &mut Flatmap, name: &String)
-	{
-		for su_name in self.units.find(name).unwrap().get_subunits().iter()
-		{
-			if flat_units.find(su_name).is_none()
-			{
-				self.flatten_unit(flat_units, su_name);
-			}
-		}
-		let unit = self.units.find_mut(name).unwrap();
-		let flat = unit.flatten(&*flat_units);
-		flat_units.insert( name.clone(), flat );
-	}
 	pub fn flatten_root(&mut self) -> flat::Mesh
 	{
 		let mut flat_units = ::collections::TreeMap::new();
 		for name in self.rootunit.get_subunits().iter()
 		{
-			self.flatten_unit( &mut flat_units, name );
+			flatten_unit( &mut self.units, &mut flat_units, name );
 		}
-		self.rootunit.flatten(&flat_units).deref().clone()
+		self.flat_units = flat_units;
+		let ret = self.rootunit.flatten(&self.flat_units).deref().clone();
+		return ret;
+	}
+	pub fn flatten_tests(&mut self)
+	{
+		for (name,test) in self.tests.iter()
+		{
+			info!("Flattening deps for '{}'", name);
+			for name in test.unit.get_subunits().iter()
+			{
+				flatten_unit(&mut self.units, &mut self.flat_units, name);
+			}
+		}
+		for (name,test) in self.tests.mut_iter()
+		{
+			self.flat_tests.insert( name.clone(), test.flatten(&self.flat_units) );
+		}
+	}
+	
+	pub fn iter_tests(&self) -> ::collections::treemap::Entries<String,flat::Test>
+	{
+		self.flat_tests.iter()
+	}
+}
+
+fn flatten_unit(units: &mut MutableMap<String,Unit>, flat_units: &mut Flatmap, name: &String)
+{
+	if flat_units.find(name).is_none()
+	{
+		for su_name in units.find(name).unwrap().get_subunits().iter()
+		{
+			flatten_unit(units, flat_units, su_name);
+		}
+		let unit = units.find_mut(name).unwrap();
+		let flat = unit.flatten(&*flat_units);
+		flat_units.insert( name.clone(), flat );
 	}
 }
 
