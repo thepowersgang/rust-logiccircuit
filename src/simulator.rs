@@ -4,18 +4,18 @@
 
 pub struct Engine<'a>
 {
-	mesh: &'a mut ::cct_mesh::Mesh,
+	mesh: &'a mut ::cct_mesh::flat::Mesh,
 	curstate: Vec<bool>,
 	newstate: Vec<bool>,
 }
 
 impl<'a> Engine<'a>
 {
-	pub fn new<'a>(mesh: &'a mut ::cct_mesh::Mesh) -> Engine<'a>
+	pub fn new<'a>(mesh: &'a mut ::cct_mesh::flat::Mesh) -> Engine<'a>
 	{
 		Engine {
-			curstate: Vec::from_elem(mesh.nodes.len(), false),
-			newstate: Vec::from_elem(mesh.nodes.len(), false),
+			curstate: Vec::from_elem(mesh.n_nodes, false),
+			newstate: Vec::from_elem(mesh.n_nodes, false),
 			mesh: mesh,
 		}
 	}
@@ -29,9 +29,9 @@ impl<'a> Engine<'a>
 				let mut v = Vec::with_capacity( ele.inputs.len() );
 				for i in ele.inputs.iter() {
 					v.push( match *i {
-						::cct_mesh::NodeOne => true,
-						::cct_mesh::NodeZero => false,
-						::cct_mesh::NodeId(id) => self.curstate[id],
+						::cct_mesh::flat::NodeOne => true,
+						::cct_mesh::flat::NodeZero => false,
+						::cct_mesh::flat::NodeId(id) => self.curstate[id],
 						});
 				}
 				v
@@ -46,8 +46,11 @@ impl<'a> Engine<'a>
 			{
 				match *line
 				{
-				::cct_mesh::NodeId(id) => { *(self.newstate.get_mut(id)) |= outputs[i] },
-				_ => {},
+				::cct_mesh::flat::NodeId(id) => {
+					*(self.newstate.get_mut(id)) |= outputs[i]
+					},
+				_ => {
+					},
 				}
 			}
 		}
