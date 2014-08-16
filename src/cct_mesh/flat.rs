@@ -35,6 +35,21 @@ pub struct Mesh
 	pub outputs: Vec<NodeRef>,
 }
 
+pub struct Test
+{
+	exec_limit:	uint,
+	completion: Vec<NodeRef>,
+	assertions: Vec<TestAssert>,
+}
+
+struct TestAssert
+{
+	line:	uint,
+	conditions: Vec<NodeRef>,
+	values: Vec<NodeRef>,
+	expected: Vec<NodeRef>,
+}
+
 pub struct Display
 {
 	condition: Vec<NodeRef>,

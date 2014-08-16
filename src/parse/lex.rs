@@ -109,6 +109,7 @@ impl<'rl> Lexer<'rl>
 			saved_tok: None,
 		}
 	}
+	pub fn curline(&self) -> uint { self.line as uint }
 	
 	fn _getc(&mut self) -> IoResult<char> {
 		let ret = match self.lastchar {

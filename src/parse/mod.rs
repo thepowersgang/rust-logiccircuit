@@ -457,6 +457,7 @@ fn handle_meta(parser: &mut Parser, meshroot: &mut ::cct_mesh::Root, state: &mut
 			}.set_completion(conditions);
 		},
 	"testassert" => {
+		let line = parser.lexer.curline();
 		let conditions = parser.get_value_list( meshroot, state.get_curunit() );
 		let values = parser.get_value_list( meshroot, state.get_curunit() );
 		let expected = parser.get_value_list( meshroot, state.get_curunit() );
@@ -465,7 +466,7 @@ fn handle_meta(parser: &mut Parser, meshroot: &mut ::cct_mesh::Root, state: &mut
 		match state.get_curtest() {
 			Some(x) => x,
 			None => syntax_error!(parser.lexer, "#testassert outside of a test")
-			}.add_assert(conditions, values, expected);
+			}.add_assert(line, conditions, values, expected);
 		},
 	"endtestcase" => {
 		syntax_assert_get!(parser, TokNewline => (), "Expected newline after #endtestcase");

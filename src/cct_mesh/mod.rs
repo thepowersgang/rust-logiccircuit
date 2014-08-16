@@ -17,6 +17,7 @@ use cct_mesh::flat::NodeZero;
 pub mod flat;
 
 macro_rules! chain( ($base:expr $(.. $next:expr)+) => ( $base $(.chain($next) )+ ) )
+macro_rules! zip  ( ($base:expr $(, $next:expr)+) => ( $base $(.zip($next) )+ ) )
 
 #[deriving(Default)]
 struct Link
@@ -90,6 +91,7 @@ pub struct Unit
 
 struct TestAssert
 {
+	line: uint,
 	conditions: LinkList,
 	values: LinkList,
 	expected: LinkList,
@@ -218,30 +220,6 @@ impl ::core::fmt::Show for NodeRef
 		NodeZero => write!(f, "NodeZero"),
 		NodeId(id) => write!(f, "NodeId({})", id),
 		}
-	}
-}
-
-impl Test
-{
-	pub fn get_unit(&mut self) -> &mut Unit {
-		&mut self.unit
-	}
-	
-	pub fn set_completion(&mut self, conds: LinkList) -> bool {
-		if self.completion.len() > 0 {
-			return true;
-		}
-		else {
-			self.completion = conds;
-			return false;
-		}
-	}
-	pub fn add_assert(&mut self, conds: LinkList, vals: LinkList, exp: LinkList) {
-		self.assertions.push(TestAssert{
-			conditions: conds,
-			values: vals,
-			expected: exp,
-			});
 	}
 }
 
@@ -429,9 +407,8 @@ impl Unit
 		debug!("n_eles = {}, n_links = {}", n_eles, n_links);
 		
 		// Count elements and nodes from sub units
-		for (i,subu_ref) in self.subunits.iter().enumerate()
+		for (subu_ref,subu) in zip!( self.subunits.iter(), subunits.iter() )
 		{
-			let subu = &subunits[i];
 			n_eles += subu.elements.len();
 			// 1. Assert that no input connects directly to output
 			// 2. Add link count, subtract nInput and nOutput
@@ -612,6 +589,46 @@ impl Unit
 	}
 }
 
+impl Test
+{
+	pub fn new(name: &String, exec_limit: uint) -> Unit {
+		Test {
+			unit: Unit::new( &format!("!TEST:{}",name)),
+			exec_limit: exec_limit,
+			..Default::default()
+		}
+	}
+	pub fn get_unit(&mut self) -> &mut Unit {
+		&mut self.unit
+	}
+	
+	pub fn set_completion(&mut self, conds: LinkList) -> bool {
+		if self.completion.len() > 0 {
+			return true;
+		}
+		else {
+			self.completion = conds;
+			return false;
+		}
+	}
+	pub fn add_assert(&mut self, line: uint, conds: LinkList, vals: LinkList, exp: LinkList) {
+		self.assertions.push(TestAssert{
+			line: line,
+			conditions: conds,
+			values: vals,
+			expected: exp,
+			});
+	}
+	
+	pub fn flatten(&mut self) -> flat::Test
+	{
+		flat::Test {
+			exec_limit: self.exec_limit,
+			unit: self.unit.flatten(),
+			}
+	}
+}
+
 type Flatmap = ::collections::TreeMap<String,Rc<flat::Mesh>>;
 
 impl Root
@@ -646,7 +663,7 @@ impl Root
 		None => ()
 		}
 		
-		let val = Test { unit: Unit::new( &format!("!TEST:{}",name)), exec_limit: exec_limit, ..Default::default() };
+		let val = Test::new(&name, exec_limit);
 		self.tests.insert(name.clone(), val);
 		return self.tests.find_mut(name);
 	}
