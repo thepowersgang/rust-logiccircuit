@@ -127,7 +127,6 @@ macro_rules! exp( ($val:expr, $e:pat => $res:expr) => (match $val { $e=>$res, _=
 
 impl Default for RefCell<Link> {
 	fn default() -> RefCell<Link> {
-		unsafe{ ::std::intrinsics::breakpoint(); }
 		RefCell::new(Link {name: "<default>".to_string(), ..Default::default()})
 	}
 }
@@ -427,7 +426,7 @@ impl Unit
 			n_bps += subu.breakpoints.len();
 			n_disp += subu.dispitems.len();
 		}
-		debug!("w/ subunits n_eles={}, n_links={}, n_bps={}, n_disp={}",
+		info!("w/ subunits n_eles={}, n_links={}, n_bps={}, n_disp={}",
 			n_eles, n_links, n_bps, n_disp);
 		
 		let mut ret = flat::Mesh::new(n_links, n_eles, n_bps, n_disp, &self.inputs, &self.outputs);
@@ -460,10 +459,11 @@ impl Unit
 				};
 			ret.push_ele( inst );
 		}
-		debug!("- Elements added");
+		info!("- Elements added");
 		// Add breakpoints
 		for bp in self.breakpoints.iter()
 		{
+			debug!("Breakpoint '{}'", bp.name);
 			ret.push_breakpoint( flat::Breakpoint::new(
 				bp.name.clone(),
 				flat::linklist_to_noderefs(&bp.conds)
@@ -472,6 +472,7 @@ impl Unit
 		// Add display items
 		for di in self.disp_items.iter()
 		{
+			debug!("Display item '{}'", di.text);
 			ret.push_disp( flat::Display::new(
 				di.text.clone(),
 				flat::linklist_to_noderefs(&di.condition),
@@ -553,17 +554,7 @@ impl Unit
 		*/
 		
 		// Import elements
-		for ele in flattened.elements.iter()
-		{
-			let ele_inputs  = self.noderefs_aliased(&ele.inputs,  &aliases);
-			let ele_outputs = self.noderefs_aliased(&ele.outputs, &aliases);
-			let inst = flat::ElementInst {
-				inst: ele.inst.dup(),
-				inputs:  ele_inputs,
-				outputs: ele_outputs,
-				};
-			mesh.push_ele( inst );
-		}
+		mesh.merge(flattened, &aliases);
 		
 		return unbound_nodes;
 	}
@@ -588,31 +579,6 @@ impl Unit
 			ret.push( unitref.name.clone() );
 		}
 		return ret;
-	}
-	
-	fn noderefs_aliased(&self, innodes: &Vec<NodeRef>, aliases: &Vec<Option<NodeRef>>) -> Vec<NodeRef>
-	{
-		let mut rv = Vec::with_capacity(innodes.len());
-		for (i,node) in innodes.iter().enumerate()
-		{
-			let nr = match *node
-				{
-				NodeId(id) => {
-					if id >= aliases.len() {
-						fail!("BUG - Node {} (idx {}) not in aliases table (only {} entries)",
-							id, i, aliases.len());
-					}
-					if aliases[id].is_none() {
-						fail!("BUG - Node {} (idx {}) was not aliased", id, i);
-					}
-					aliases[id].unwrap()
-					},
-				NodeZero => NodeZero,
-				NodeOne  => NodeOne,
-				};
-			rv.push( nr );
-		}
-		return rv;
 	}
 }
 

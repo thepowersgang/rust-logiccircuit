@@ -50,6 +50,7 @@ impl<'a> Engine<'a>
 			// Save results
 			for (i,line) in ele.outputs.iter().enumerate()
 			{
+				debug!("{} = {}", line, outputs[i]);
 				match *line
 				{
 				::cct_mesh::flat::NodeId(id) => {
@@ -61,6 +62,7 @@ impl<'a> Engine<'a>
 			}
 		}
 		::std::mem::swap( &mut self.curstate, &mut self.newstate );
+		self.newstate.mut_iter().map( |v| *v = false ).count();
 	}
 	
 	/// @param logical_and - If true, perform a logical AND on the values, else do an OR
@@ -99,9 +101,84 @@ impl<'a> Engine<'a>
 		return false;
 	}
 	
-	pub fn show_display(&self)
+	pub fn show_display(&self) -> bool
 	{
+		let mut rv = false;
+		for disp in self.mesh.dispitems.iter()
+		{
+			if self.are_set(&disp.condition, true)
+			{
+				debug!("Display '{}' with '{}'", disp.text, disp.values);
+				print_display(disp.text.as_slice(), &self.get_values(&disp.values));
+				rv = true;
+			}
+		}
+		rv
 	}
+}
+
+fn print_display(fmtstr: &str, vals: &Vec<bool>)
+{
+	macro_rules! getc( ($it:expr,$tgt:tt) => () )
+	let mut idx = 0;
+	
+	let mut it = fmtstr.chars();
+	'parse: loop
+	{
+		let mut c = match it.next() { None=>break 'parse,Some(x)=>x };
+		if c == '%'
+		{
+			let mut count = 0;
+			loop
+			{
+				c = match it.next() { None=>break 'parse,Some(x)=>x };
+				match c.to_digit(10) {
+					Some(x) => {
+						count = count*10 + x
+						},
+					None => break,
+					};
+			}
+			if count == 0 {
+				count = 1;
+			}
+			let val = read_uint(vals, idx, count);
+			idx += count;
+			match c
+			{
+			'i' => print!("{:u}", val),
+			'x' => print!("{:x}", val),
+			_ => print!("UNK"),
+			}
+		}
+		else
+		{
+			print!("{}", c);
+		}
+	}
+	
+	if idx != vals.len()
+	{
+		print!(">> ");
+		for i in range(idx, vals.len()) {
+			print!("{}", match vals[i] {false=>0u,true=>1u});
+		}
+	}
+	println!("");
+}
+
+/// Read an unsigned integer from a sequence of bools
+pub fn read_uint(inlines: &Vec<bool>, base: uint, count: uint) -> u64
+{
+	let mut val: u64 = 0;
+	for i in range(0,count)
+	{
+		if inlines[base+i]
+		{
+			val |= 1u64 << i;
+		}
+	}
+	return val;
 }
 
 // vim: ft=rust

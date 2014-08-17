@@ -2,6 +2,7 @@
 //
 //
 use std::default::Default;
+use simulator::read_uint;
 
 /*
 pub enum Errcode
@@ -21,18 +22,6 @@ pub trait Element
 	fn update(&mut self, outlines: &mut Vec<bool>, inlines: &Vec<bool>);
 }
 
-/// Read an unsigned integer from a sequence of lines
-fn read_uint(inlines: &Vec<bool>, base: uint, count: uint) -> u64 {
-	let mut val: u64 = 0;
-	for i in range(0,count)
-	{
-		if inlines[base+i]
-		{
-			val |= 1u64 << i;
-		}
-	}
-	return val;
-}
 fn write_uint(outlines: &mut Vec<bool>, base: uint, count: uint, val: u64) {
 	for i in range(0,count)
 	{
@@ -85,14 +74,14 @@ impl ElementDELAY
 {
 	pub fn new(params: &Vec<u64>, n_inputs: uint) -> Result<Box<Element>,String>
 	{
-		let count = get_or!(params, 0, 1u64) as uint;
+		let count = get_or!(params, 0, 1u64) as uint - 1;
 		Ok( box ElementDELAY { count: count, idx: 0, vals: Vec::<bool>::from_fn(count*n_inputs, |_| false),} as Box<Element> )
 	}
 }
 impl Element for ElementDELAY
 {
 	fn name(&self) -> String {
-		return format!("ElementDELAY{{{}}}", self.count);
+		return format!("ElementDELAY{{{}}}", self.count+1);
 	}
 	fn get_outputs(&self, n_inputs: uint) -> uint
 	{
@@ -116,10 +105,10 @@ impl Element for ElementDELAY
 		else
 		{
 			let baseidx = self.idx * inlines.len();
-			for i in range(0, inlines.len())
+			for (i,line) in inlines.iter().enumerate()
 			{
-				*(outlines.get_mut(i)) |= self.vals[ baseidx + i ];
-				*(self.vals.get_mut(baseidx + i)) = inlines[i];
+				*(outlines.get_mut(i)) = self.vals[ baseidx + i ];
+				*(self.vals.get_mut(baseidx + i)) = *line;
 			}
 			
 			self.idx += 1;
@@ -207,9 +196,14 @@ impl Element for ElementPULSE
 	fn update(&mut self, outlines: &mut Vec<bool>, inlines: &Vec<bool>)
 	{
 		let curval = inlines[0];
-		let outval = if self.dir_is_falling { !curval && self.last_value } else { curval && !self.last_value };
+		
+		// Transition?
+		// Pulse on the relevant transition
+		if curval != self.last_value && self.last_value == self.dir_is_falling
+		{
+			*(outlines.get_mut(0)) = true;
+		}
 		self.last_value = curval;
-		*(outlines.get_mut(0)) |= outval;
 	}
 }
 
@@ -352,7 +346,7 @@ impl Element for ElementNOT
 	{
 		for (i,line) in outlines.mut_iter().enumerate()
 		{
-			*line |= inlines[i];
+			*line = !inlines[i];
 		}
 	}
 }
@@ -410,7 +404,10 @@ impl Element for ElementLATCH
 			}
 			else {
 				for (i,v) in self.vals.mut_iter().enumerate() {
-					*v = inlines[in_ofs+i];
+					if inlines[in_ofs+i]
+					{
+						*v = true;
+					}
 				}
 			}
 			
