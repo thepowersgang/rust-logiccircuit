@@ -1,4 +1,4 @@
-//
+// LogicCircuit simulator
 //
 //
 #![feature(globs)]
@@ -7,7 +7,7 @@
 #[phase(plugin, link)] extern crate log;
 
 extern crate getopts;
-extern crate std;
+//extern crate std;
 extern crate collections;
 extern crate core;
 extern crate glob;

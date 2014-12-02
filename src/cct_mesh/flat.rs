@@ -12,7 +12,7 @@ pub enum NodeRef
 #[deriving(Clone)]
 pub struct ElementInst
 {
-	pub inst: Box<::elements::Element>,
+	pub inst: Box<::elements::Element+'static>,
 	pub inputs: Vec<NodeRef>,
 	pub outputs: Vec<NodeRef>,
 }

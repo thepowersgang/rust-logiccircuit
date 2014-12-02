@@ -34,7 +34,7 @@ fn write_uint(outlines: &mut Vec<bool>, base: uint, count: uint, val: u64) {
 
 macro_rules! get_or( ($vec:expr, $idx:expr, $def:expr) => ({let _i=$idx; let _v=$vec; (if _i < _v.len(){_v[_i]}else{$def})}) )
 
-pub fn create(name: &String, params: &Vec<u64>, n_inputs: uint) -> Result<Box<Element>,String>
+pub fn create(name: &String, params: &[u64], n_inputs: uint) -> Result<Box<Element+'static>,String>
 {
 	match name.as_slice()
 	{
@@ -57,7 +57,7 @@ pub fn create(name: &String, params: &Vec<u64>, n_inputs: uint) -> Result<Box<El
 	"XOR" => ElementXOR::new(params, n_inputs),
 	"NOR" => ElementNOR::new(params, n_inputs),
 	"NXOR" => ElementNXOR::new(params, n_inputs),
-	"XNOR" => ElementNXOR::new(params, n_inputs),	// < sam
+	"XNOR" => ElementNXOR::new(params, n_inputs),	// < same
 	"NOT" => ElementNOT::new(params, n_inputs),
 	_ => return Err("Unknown element".to_string())
 	}
@@ -72,7 +72,7 @@ struct ElementDELAY
 }
 impl ElementDELAY
 {
-	pub fn new(params: &Vec<u64>, n_inputs: uint) -> Result<Box<Element>,String>
+	pub fn new(params: &[u64], n_inputs: uint) -> Result<Box<Element+'static>,String>
 	{
 		let count = get_or!(params, 0, 1u64) as uint - 1;
 		Ok( box ElementDELAY { count: count, idx: 0, vals: Vec::<bool>::from_fn(count*n_inputs, |_| false),} as Box<Element> )
@@ -123,7 +123,7 @@ impl Element for ElementDELAY
 struct ElementENABLE;
 impl ElementENABLE
 {
-	fn new(_/*params*/: &Vec<u64>, n_inputs: uint) -> Result<Box<Element>,String>
+	fn new(_/*params*/: &[u64], n_inputs: uint) -> Result<Box<Element>,String>
 	{
 		if n_inputs < 2 {
 			return Err(format!("Incorrect input count, expected at least two"));
@@ -166,7 +166,7 @@ struct ElementPULSE
 }
 impl ElementPULSE
 {
-	fn new(params: &Vec<u64>, n_inputs: uint) -> Result<Box<Element>,String>
+	fn new(params: &[u64], n_inputs: uint) -> Result<Box<Element>,String>
 	{
 		let dir = match params.len() {
 			0 => 0,
@@ -215,7 +215,7 @@ struct ElementHOLD
 }
 impl ElementHOLD
 {
-	fn new(params: &Vec<u64>, n_inputs: uint) -> Result<Box<Element>,String>
+	fn new(params: &[u64], n_inputs: uint) -> Result<Box<Element>,String>
 	{
 		let time = match params.len() {
 			0 => 1,
@@ -262,7 +262,7 @@ struct $name
 }
 impl $name
 {
-	pub fn new(params: &Vec<u64>, n_inputs: uint) -> Result<Box<Element>,String>
+	pub fn new(params: &[u64], n_inputs: uint) -> Result<Box<Element>,String>
 	{
 		let bussize  = get_or!(params, 0, 1u64) as uint;
 		let buscount = get_or!(params, 1, 1u64) as uint;
@@ -324,7 +324,7 @@ def_logic!( ElementOR,   false, |v:bool,i:bool| v|i, |v| v )
 struct ElementNOT;
 impl ElementNOT
 {
-	fn new(_/*params*/: &Vec<u64>, _/*n_inputs*/: uint) -> Result<Box<Element>,String>
+	fn new(_/*params*/: &[u64], _/*n_inputs*/: uint) -> Result<Box<Element>,String>
 	{
 		return Ok( box ElementNOT as Box<Element> );
 	}
@@ -362,7 +362,7 @@ struct ElementLATCH
 }
 impl ElementLATCH
 {
-	pub fn new(params: &Vec<u64>, n_inputs: uint) -> Result<Box<Element>,String>
+	pub fn new(params: &[u64], n_inputs: uint) -> Result<Box<Element>,String>
 	{
 		let size = get_or!(params, 0, 1u64) as uint;
 		if size == 0 {
@@ -424,7 +424,7 @@ struct ElementMUX
 }
 impl ElementMUX
 {
-	fn new(params: &Vec<u64>, n_inputs: uint) -> Result<Box<Element>,String>
+	fn new(params: &[u64], n_inputs: uint) -> Result<Box<Element>,String>
 	{
 		if params.len() > 2 { return Err(format!("Too many parameters, expected at most 2")); }
 		let bits    = if params.len() >= 1 { params[0] as uint } else { 1 };
@@ -480,7 +480,7 @@ struct ElementDEMUX
 }
 impl ElementDEMUX
 {
-	fn new(params: &Vec<u64>, n_inputs: uint) -> Result<Box<Element>,String>
+	fn new(params: &[u64], n_inputs: uint) -> Result<Box<Element>,String>
 	{
 		let (bits, bussize) = match params.len()
 				{
@@ -538,7 +538,7 @@ struct ElementSEQUENCER
 }
 impl ElementSEQUENCER
 {
-	fn new(params: &Vec<u64>, n_inputs: uint) -> Result<Box<Element>,String>
+	fn new(params: &[u64], n_inputs: uint) -> Result<Box<Element>,String>
 	{
 		if params.len() != 1 {
 			return Err(format!("Invalid parameter count, expected 1, got {}", params.len()));
@@ -602,7 +602,7 @@ struct ElementMEMORY_DRAM
 }
 impl ElementMEMORY_DRAM
 {
-	fn new(params: &Vec<u64>, n_inputs: uint) -> Result<Box<Element>,String>
+	fn new(params: &[u64], n_inputs: uint) -> Result<Box<Element>,String>
 	{
 		if params.len() != 2 {
 			return Err(format!("Invalid parameter count, expected 2, got {}", params.len()));

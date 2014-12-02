@@ -41,7 +41,7 @@ pub enum Token {
 
 pub struct Lexer<'stream>
 {
-	instream: &'stream mut Reader,
+	instream: &'stream mut Reader+'static,
 	filename: String,
 	line: u32,
 	lastchar: Option<char>,

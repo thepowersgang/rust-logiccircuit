@@ -33,7 +33,7 @@ type Flatmap = ::collections::TreeMap<String,Rc<flat::Mesh>>;
 
 pub struct Element
 {
-	inst: Box<::elements::Element>,
+	inst: Box<::elements::Element+'static>,
 	inputs: LinkList,
 	outputs: LinkList,
 }
@@ -116,9 +116,9 @@ pub struct Root
 	flat_tests: ::collections::TreeMap<String,flat::Test>,
 }
 
-impl Clone for Box<::elements::Element>
+impl Clone for Box<::elements::Element+'static>
 {
-	fn clone(&self) -> Box<::elements::Element> {
+	fn clone(&self) -> Box<::elements::Element+'static> {
 		return self.dup();
 	}
 }

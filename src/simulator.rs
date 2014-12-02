@@ -2,10 +2,17 @@
 //
 //
 
+struct Ele
+{
+	inst: ::cct_mesh::flat::ElementInst,
+	input_vals: Vec<bool>,
+	output_vals: Vec<bool>,
+}
+
 pub struct Engine<'a>
 {
 	mesh: &'a ::cct_mesh::flat::Mesh,
-	elements: Vec<::cct_mesh::flat::ElementInst>,
+	elements: Vec<Ele>,
 	curstate: Vec<bool>,
 	newstate: Vec<bool>,
 }
@@ -23,7 +30,11 @@ impl<'a> Engine<'a>
 		Engine {
 			mesh: mesh,
 			elements: mesh.elements.iter().map(
-				|e| e.clone()
+				|e| Ele {
+					inst: e.clone(),
+					input_vals:  Vec::from_elem(e.inputs.len(), false),
+					output_vals: Vec::from_elem(e.outputs.len(), false),
+					}
 				).collect(),
 			curstate: Vec::from_elem(mesh.n_nodes, false),
 			newstate: Vec::from_elem(mesh.n_nodes, false),
@@ -35,26 +46,22 @@ impl<'a> Engine<'a>
 		for ele in self.elements.mut_iter()
 		{
 			// Obtain inputs
-			let inputs = {
-				let mut inp = Vec::with_capacity(ele.inputs.len());
-				for i in ele.inputs.iter() {
-					inp.push( getval!(self.curstate, *i) );
-				}
-				inp
-				};
-			let mut outputs = Vec::from_elem(ele.outputs.len(), false);
+			for (v,i) in ele.input_vals.mut_iter().zip( ele.inst.inputs.iter() ) {
+				*v = getval!(self.curstate, *i);
+			}
+			ele.output_vals.mut_iter().map( |v| *v = false ).count();
 
 			// Update
-			ele.inst.update(&mut outputs, &inputs);
+			ele.inst.inst.update(&mut ele.output_vals, &ele.input_vals);
 		
 			// Save results
-			for (i,line) in ele.outputs.iter().enumerate()
+			for (line,val) in ele.inst.outputs.iter().zip( ele.output_vals.iter() )
 			{
-				debug!("{} = {}", line, outputs[i]);
+				debug!("{} = {}", line, val);
 				match *line
 				{
 				::cct_mesh::flat::NodeId(id) => {
-					*(self.newstate.get_mut(id)) |= outputs[i]
+					*(self.newstate.get_mut(id)) |= *val
 					},
 				_ => {
 					},
