@@ -9,9 +9,7 @@ use std::cell::RefCell;
 use std::default::Default;
 
 use cct_mesh::flat::NodeRef;
-use cct_mesh::flat::NodeId;
-use cct_mesh::flat::NodeOne;
-use cct_mesh::flat::NodeZero;
+use cct_mesh::flat::NodeRef::{NodeId,NodeOne,NodeZero};
 
 pub mod flat;
 
@@ -123,7 +121,7 @@ impl Clone for Box<::elements::Element+'static>
 	}
 }
 
-macro_rules! exp( ($val:expr, $e:pat => $res:expr) => (match $val { $e=>$res, _=>fail!("exp!")}))
+macro_rules! exp( ($val:expr, $e:pat => $res:expr) => (match $val { $e=>$res, _=>panic!("exp!")}))
 
 impl Default for RefCell<Link> {
 	fn default() -> RefCell<Link> {
@@ -150,7 +148,7 @@ impl Link
 	}
 	pub fn tag(&mut self, value: uint) -> bool {
 		if self.aliased != None {
-			fail!("Link '{}' already aliased to #{}", self.name, self.aliased.unwrap());
+			panic!("Link '{}' already aliased to #{}", self.name, self.aliased.unwrap());
 		}
 		assert!( self.aliased == None );
 		match self.reflink {
@@ -296,7 +294,7 @@ impl Unit
 	pub fn make_group(&mut self, name: &String, size: uint) {
 		let mut val = Vec::with_capacity(size);
 		for i in range(0,size) {
-			val.push( self.get_link(&format!("{}[{:2u}]", name, i)) );
+			val.push( self.get_link(&format!("{}[{:2}]", name, i)) );
 		}
 		self.groups.insert(name.clone(), val);
 		debug!("make_group: {} created with {} items", *name, size);
@@ -335,11 +333,11 @@ impl Unit
 		Some(unit) => {
 			let out = match outputs { None => self.make_anon_links(unit.outputs.len()), Some(o) => o };
 			if out.len() != unit.outputs.len() {
-				fail!("Output mismatch for unit '{}', got {} expected {}",
+				panic!("Output mismatch for unit '{}', got {} expected {}",
 					name, out.len(), unit.outputs.len());
 			}
 			if inputs.len() != unit.inputs.len() {
-				fail!("Input mismatch for unit '{}', got {} expected {}",
+				panic!("Input mismatch for unit '{}', got {} expected {}",
 					name, inputs.len(), unit.inputs.len());
 			}
 			let r = UnitRef {
@@ -353,7 +351,7 @@ impl Unit
 		None => {
 			let ele = match ::elements::create(&name, &params, inputs.len()) {
 				Ok(e) => e,
-				Err(msg) => fail!("Error in creating '{}' - {}", name, msg),
+				Err(msg) => panic!("Error in creating '{}' - {}", name, msg),
 				};
 			
 			let out = match outputs { Some(o) => o, None => self.make_anon_links( ele.get_outputs(inputs.len()) ) };
@@ -566,7 +564,7 @@ impl Unit
 		{
 			let unit = match pre_flattened.find(&unitref.name) {
 				Some(x) => x.clone(),
-				None => fail!("BUG - Subunit '{}' referenced by '{}' not yet converted", unitref.name, self.name),
+				None => panic!("BUG - Subunit '{}' referenced by '{}' not yet converted", unitref.name, self.name),
 				};
 			ret.push( unit );
 		}
@@ -698,7 +696,7 @@ impl Root
 	}
 }
 
-fn flatten_unit(units: &mut MutableMap<String,Unit>, flat_units: &mut Flatmap, name: &String)
+fn flatten_unit(units: &mut TreeMap<String,Unit>, flat_units: &mut Flatmap, name: &String)
 {
 	if flat_units.find(name).is_none()
 	{

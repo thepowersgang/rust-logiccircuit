@@ -3,6 +3,7 @@
 //
 use std::default::Default;
 use parse::lex::*;
+use parse::lex::Token::*;
 
 mod lex;
 
@@ -12,11 +13,11 @@ struct Parser<'stream>
 }
 
 macro_rules! is_enum( ($val:expr $exp:pat) => (match $val { $exp => true, _ => false }) )
-macro_rules! exp_enum( ($val:expr $exp:ident) => (match $val { $exp(x) => x, _ => fail!("Expected enum {}", $exp) }) )
+macro_rules! exp_enum( ($val:expr $exp:ident) => (match $val { $exp(x) => x, _ => panic!("Expected enum {}", $exp) }) )
 macro_rules! parse_try( ($e:expr, $rv:expr) => (match $e {Ok(v) => v, Err(e) => {error!("Read error: {}", e); return $rv}}) )
 macro_rules! syntax_error( ($lexer:expr, $($arg:tt)*) => ({
 	let p = &$lexer;
-	fail!("Syntax Error: {} {}", p, format!($($arg)*));
+	panic!("Syntax Error: {} {}", p, format!($($arg)*));
 }) )
 macro_rules! syntax_assert_raw( ($parser:expr, $tok:expr, $filter:pat => $val:expr, $msg:expr) => ({
 	let tok = $tok;
@@ -127,7 +128,7 @@ impl<'rl> Parser<'rl>
 		TokGroup(name) => {
 			let group = match unit.get_group(&name) {
 				Some(x) => x,
-				None => fail!("Group @{} is not defined", name)
+				None => panic!("Group @{} is not defined", name)
 				};
 			if self.look_ahead() == TokSqOpen
 			{
@@ -136,7 +137,7 @@ impl<'rl> Parser<'rl>
 				{
 					let start = self.get_numeric();
 					if start >= group.len() as u64 {
-						fail!("Index {} out of range for group @{}", start, name);
+						panic!("Index {} out of range for group @{}", start, name);
 					}
 					if self.look_ahead() != TokColon
 					{
@@ -232,7 +233,7 @@ impl<'rl> Parser<'rl>
 				},
 			TokGroup(name) => {
 				if unit.get_group(&name) != None {
-					fail!("Group @{} is already defined", name)
+					panic!("Group @{} is already defined", name)
 				}
 				syntax_assert_get!(self, TokSqOpen => (), "Expected TokSqOpen after group in connection list");
 				let size = self.get_numeric();
@@ -243,7 +244,7 @@ impl<'rl> Parser<'rl>
 					ret.push( line.clone() );
 				}
 				},
-			_ => fail!("Syntax error - Expected TokLine or TokGroup in connection list, got {}", tok)
+			_ => panic!("Syntax error - Expected TokLine or TokGroup in connection list, got {}", tok)
 			}
 			
 			let comma = self.get_token();
@@ -400,7 +401,7 @@ fn handle_meta(parser: &mut Parser, meshroot: &mut ::cct_mesh::Root, state: &mut
 		
 		match meshroot.add_unit(&unitname) {
 			Some(x) => state.set_curunit(x),
-			None => fail!("Redefinition of unit {}", unitname)
+			None => panic!("Redefinition of unit {}", unitname)
 			};
 		},
 	"input" => {
@@ -409,7 +410,7 @@ fn handle_meta(parser: &mut Parser, meshroot: &mut ::cct_mesh::Root, state: &mut
 		syntax_assert_get!(parser, TokNewline => (), "Expected newline after input list");
 		
 		if state.get_curunit().set_input( conns ) {
-			fail!("Redefinition of unit inputs");
+			panic!("Redefinition of unit inputs");
 		}
 		},
 	"output" => {
@@ -418,7 +419,7 @@ fn handle_meta(parser: &mut Parser, meshroot: &mut ::cct_mesh::Root, state: &mut
 		syntax_assert_get!(parser, TokNewline => (), "Expected newline after output list");
 		
 		if state.get_curunit().set_output( conns ) {
-			fail!("Redefinition of unit outputs");
+			panic!("Redefinition of unit outputs");
 		}
 		},
 	"array" => {
@@ -444,7 +445,7 @@ fn handle_meta(parser: &mut Parser, meshroot: &mut ::cct_mesh::Root, state: &mut
 		
 		match meshroot.add_test(&name, limit as uint) {
 			Some(x) => state.set_curtest( x ),
-			None => fail!("Redefinition of test \"{}\"", name)
+			None => panic!("Redefinition of test \"{}\"", name)
 			};
 		},
 	"testcomplete" => {
@@ -496,7 +497,7 @@ fn handle_meta(parser: &mut Parser, meshroot: &mut ::cct_mesh::Root, state: &mut
 	"endblock" => {
 		syntax_assert_get!(parser, TokNewline => (), "Expected newline after #endblock");
 		},
-	_ => fail!("Unknown meta-op '#{}'", name)
+	_ => panic!("Unknown meta-op '#{}'", name)
 	}
 }
 
@@ -506,11 +507,11 @@ pub fn load(filename: &str) -> Option<::cct_mesh::Root>
 	// 1. Spin up a yasm preprocessor
 	let mut subproc = match ::std::io::Command::new("yasm").arg("-e").arg(filename).spawn() {
 		Ok(child) => child,
-		Err(e) => fail!("Failed to execute yasm to preprocess file. Reason: {}", e),
+		Err(e) => panic!("Failed to execute yasm to preprocess file. Reason: {}", e),
 		};
 	let output_pipe = match subproc.stdout {
 		Some(ref mut pipe) => pipe,
-		None => fail!("BUGCHECK - Stdout was None"),
+		None => panic!("BUGCHECK - Stdout was None"),
 		};
 	// 2. Create a parser object
 	let mut parser = Parser::new(output_pipe, filename);

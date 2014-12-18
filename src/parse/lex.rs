@@ -3,6 +3,7 @@
 //
 extern crate libc;	// for isspace
 use std::io::IoResult;
+use self::Token::*;
 
 #[deriving(PartialEq)]
 #[deriving(Clone)]
@@ -51,7 +52,7 @@ pub struct Lexer<'stream>
 macro_rules! parse_try( ($e:expr, $rv:expr) => (match $e {Ok(v) => v, Err(e) => {error!("Read error: {}", e); return $rv}}) )
 macro_rules! syntax_error( ($lexer:expr, $($arg:tt)*) => ({
 	let p = &$lexer;
-	fail!("Syntax Error: {}:{}: {}", p.filename, p.line, format!($($arg)*));
+	panic!("Syntax Error: {}:{}: {}", p.filename, p.line, format!($($arg)*));
 }) )
 macro_rules! syntax_assert_raw( ($parser:expr, $tok:expr, $filter:pat => $val:expr, $msg:expr) => ({
 	let tok = $tok;
@@ -196,7 +197,7 @@ impl<'rl> Lexer<'rl>
 				'"' => ret.push_char('"'),
 				'n' => ret.push_char('\n'),
 				'\n' => (),
-				_ => fail!("Unexpected escape code in string '\\{}'", codechar)
+				_ => panic!("Unexpected escape code in string '\\{}'", codechar)
 				}
 			}
 			ret.push_char( ch );
@@ -261,7 +262,7 @@ impl<'rl> Lexer<'rl>
 		'0' => {
 			ch = getc!( TokNumber(0) );
 			match ch {
-			'1' .. '7' => {
+			'1' ... '7' => {
 				self._putback(ch);
 				TokNumber( self.read_number(8) )
 				},
@@ -273,11 +274,11 @@ impl<'rl> Lexer<'rl>
 				}
 			}
 			},
-		'1' .. '9' => {
+		'1' ... '9' => {
 			self._putback(ch);
 			TokNumber( self.read_number(10) )
 			},
-		'a'..'z'|'A'..'Z'|'_' => {
+		'a'...'z'|'A'...'Z'|'_' => {
 			self._putback(ch);
 			TokIdent( self.read_ident() )
 			}

@@ -254,7 +254,7 @@ impl Element for ElementHOLD
 	}
 }
 
-macro_rules! def_logic( ($name:ident, $init:expr, $op:expr, $final:expr) => (
+macro_rules! def_logic( ($name:ident, $init:expr, $op:expr, $finish:expr) => (
 struct $name
 {
 	bussize: uint,
@@ -278,9 +278,9 @@ impl $name
 impl Element for $name
 {
 	fn name(&self) -> String {
-		return format!("{:s}{{{:u},{:u}}}", stringify!($name), self.bussize, self.buscount);
+		return format!("{}{{{},{}}}", stringify!($name), self.bussize, self.buscount);
 	}
-	fn get_outputs(&self, _/*n_inputs*/: uint) -> uint {
+	fn get_outputs(&self, _n_inputs: uint) -> uint {
 		return self.bussize;
 	}
 	
@@ -308,7 +308,7 @@ impl Element for $name
 				let inval = inlines[ofs + j*self.bussize];
 				val = $op(val, inval);
 			}
-			val = $final(val);
+			val = $finish(val);
 			*(outlines.get_mut( i )) |= val;
 		}
 	}

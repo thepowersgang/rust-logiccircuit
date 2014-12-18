@@ -17,11 +17,12 @@ pub struct Engine<'a>
 	newstate: Vec<bool>,
 }
 
-macro_rules! getval( ($state:expr, $nr:expr) => ( match $nr {
-	::cct_mesh::flat::NodeOne => true,
-	::cct_mesh::flat::NodeZero => false,
-	::cct_mesh::flat::NodeId(id) => $state[id],
-	}))
+macro_rules! getval( ($state:expr, $nr:expr) => ( {use cct_mesh::flat::NodeRef;
+	match $nr {
+	NodeRef::NodeOne => true,
+	NodeRef::NodeZero => false,
+	NodeRef::NodeId(id) => $state[id],
+	}}))
 
 impl<'a> Engine<'a>
 {
@@ -60,7 +61,7 @@ impl<'a> Engine<'a>
 				debug!("{} = {}", line, val);
 				match *line
 				{
-				::cct_mesh::flat::NodeId(id) => {
+				::cct_mesh::flat::NodeRef::NodeId(id) => {
 					*(self.newstate.get_mut(id)) |= *val
 					},
 				_ => {
@@ -153,7 +154,7 @@ fn print_display(fmtstr: &str, vals: &Vec<bool>)
 			idx += count;
 			match c
 			{
-			'i' => print!("{:u}", val),
+			'i' => print!("{}", val),
 			'x' => print!("{:x}", val),
 			_ => print!("UNK"),
 			}

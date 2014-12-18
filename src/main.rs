@@ -19,9 +19,9 @@ mod simulator;
 
 enum TestStatus
 {
-	TestPass(uint),
-	TestFail(uint, String),
-	TestTimeout(uint),
+	Pass(uint),
+	Fail(uint, String),
+	Timeout(uint),
 }
 
 fn main()
@@ -37,7 +37,7 @@ fn main()
 	println!("> opts = ");
 	let args = match getopts::getopts(std::os::args().as_slice(), opts) {
 		Ok(m) => m,
-		Err(f) => fail!(f.to_string()),
+		Err(f) => panic!(f.to_string()),
 		};
 	println!("> args = {}", args.free);
 	
@@ -54,7 +54,7 @@ fn main()
 	// 2. Load circuit file
 	let mut mesh = match parse::load( args.free[1].as_slice() ) {
 		Some(x) => x,
-		None => fail!("Parsing of {} failed", args.free[1])
+		None => panic!("Parsing of {} failed", args.free[1])
 		};
 	
 	// - Flatten root (also flattens all other units)
@@ -86,9 +86,9 @@ fn main()
 				}
 				match res
 				{
-				TestPass(cyc) => println!("- PASS ({}/{} cycles)", cyc, test.exec_limit()),
-				TestFail(cyc,msg) => println!("- FAIL ({} cycles): {}", cyc, msg),
-				TestTimeout(cyc) => println!("- TIMEOUT ({} cycles)", cyc),
+				TestStatus::Pass(cyc) => println!("- PASS ({}/{} cycles)", cyc, test.exec_limit()),
+				TestStatus::Fail(cyc,msg) => println!("- FAIL ({} cycles): {}", cyc, msg),
+				TestStatus::Timeout(cyc) => println!("- TIMEOUT ({} cycles)", cyc),
 				}
 			}
 		}
@@ -121,13 +121,13 @@ fn run_test(test: &cct_mesh::flat::Test, show_display: bool) -> TestStatus
 		{
 			if sim.show_display()
 			{
-				println!("=== {:4u} ===", ticknum);
+				println!("=== {:4} ===", ticknum);
 			}
 		}
 		
 		if sim.are_set(test.get_completion(), true)
 		{
-			return TestPass(ticknum+1);
+			return TestStatus::Pass(ticknum+1);
 		}
 		
 		// Check assertions
@@ -140,13 +140,13 @@ fn run_test(test: &cct_mesh::flat::Test, show_display: bool) -> TestStatus
 				
 				if have != exp
 				{
-					return TestFail(ticknum+1, format!("Assertion #{} failed (line {}) - have:{} != exp:{}",
+					return TestStatus::Fail(ticknum+1, format!("Assertion #{} failed (line {}) - have:{} != exp:{}",
 						ass_idx, assert.line, have, exp));
 				}
 			}
 		}
 	}
-	TestTimeout(test.exec_limit())
+	TestStatus::Timeout(test.exec_limit())
 }
 
 fn print_usage(program_name: &str, opts: &[getopts::OptGroup])

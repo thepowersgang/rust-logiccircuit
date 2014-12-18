@@ -201,11 +201,11 @@ fn noderefs_aliased(innodes: &Vec<NodeRef>, aliases: &Vec<Option<NodeRef>>) -> V
 			{
 			NodeId(id) => {
 				if id >= aliases.len() {
-					fail!("BUG - Node {} (idx {}) not in aliases table (only {} entries)",
+					panic!("BUG - Node {} (idx {}) not in aliases table (only {} entries)",
 						id, i, aliases.len());
 				}
 				if aliases[id].is_none() {
-					fail!("BUG - Node {} (idx {}) was not aliased", id, i);
+					panic!("BUG - Node {} (idx {}) was not aliased", id, i);
 				}
 				aliases[id].unwrap()
 				},
