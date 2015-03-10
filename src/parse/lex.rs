@@ -1,12 +1,9 @@
 //
 //
 //
-extern crate libc;	// for isspace
-use std::io::IoResult;
 use self::Token::*;
 
-#[deriving(PartialEq)]
-#[deriving(Clone)]
+#[derive(PartialEq,Clone)]
 pub enum Token {
 	TokInval,
 	TokEof,
@@ -40,32 +37,36 @@ pub enum Token {
 	TokComment,
 }
 
+pub type InStream<'a> = &'a mut (::std::iter::Iterator<Item=char> + 'a);
+
 pub struct Lexer<'stream>
 {
-	instream: &'stream mut Reader+'static,
+	instream: InStream<'stream>,
 	filename: String,
 	line: u32,
 	lastchar: Option<char>,
 	saved_tok: Option<Token>,
 }
 
-macro_rules! parse_try( ($e:expr, $rv:expr) => (match $e {Ok(v) => v, Err(e) => {error!("Read error: {}", e); return $rv}}) )
-macro_rules! syntax_error( ($lexer:expr, $($arg:tt)*) => ({
+macro_rules! parse_try{
+	($e:expr, $rv:expr) => (match $e {Some(v) => v, None => {return $rv}})
+}
+macro_rules! syntax_error{ ($lexer:expr, $($arg:tt)*) => ({
 	let p = &$lexer;
 	panic!("Syntax Error: {}:{}: {}", p.filename, p.line, format!($($arg)*));
-}) )
-macro_rules! syntax_assert_raw( ($parser:expr, $tok:expr, $filter:pat => $val:expr, $msg:expr) => ({
+}) }
+macro_rules! syntax_assert_raw{ ($parser:expr, $tok:expr, $filter:pat => $val:expr, $msg:expr) => ({
 	let tok = $tok;
 	match tok {
 		$filter => $val,
 		_ => syntax_error!($parser, "{}, got {}", $msg, tok)
 	}
-}) )
-macro_rules! syntax_assert_get_int( ($parser:expr, $filter:pat => $val:expr, $msg:expr) => ({
+}) }
+macro_rules! syntax_assert_get_int{ ($parser:expr, $filter:pat => $val:expr, $msg:expr) => ({
 	syntax_assert_raw!($parser, ($parser).get_token_int(), $filter => $val, $msg)
-}) )
+}) }
 
-impl ::std::fmt::Show for Token
+impl ::std::fmt::Display for Token
 {
 	fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
 		match *self {
@@ -101,7 +102,7 @@ impl ::std::fmt::Show for Token
 
 impl<'rl> Lexer<'rl>
 {
-	pub fn new(instream: &'rl mut Reader, root_filename: &str) -> Lexer<'rl> {
+	pub fn new<'a>(instream: InStream<'a>, root_filename: &str) -> Lexer<'a> {
 		Lexer {
 			instream: instream,
 			filename: root_filename.to_string(),
@@ -112,10 +113,11 @@ impl<'rl> Lexer<'rl>
 	}
 	pub fn curline(&self) -> uint { self.line as uint }
 	
-	fn _getc(&mut self) -> IoResult<char> {
+	fn _getc(&mut self) -> Option<char>
+	{
 		let ret = match self.lastchar {
-			Some(ch) => Ok(ch),
-			None => Ok( try!(self.instream.read_byte()) as char )
+			Some(ch) => Some(ch),
+			None => self.instream.next(),
 			};
 		self.lastchar = None;
 		return ret
@@ -128,7 +130,7 @@ impl<'rl> Lexer<'rl>
 		loop
 		{
 			let ch = parse_try!(self._getc(), true);
-			if !isspace(ch) || ch == '\n' {
+			if !ch.is_whitespace() || ch == '\n' {
 				self._putback(ch);
 				break;
 			}
@@ -143,7 +145,7 @@ impl<'rl> Lexer<'rl>
 		{
 			let ch = parse_try!(self._getc(), ret);
 			if ch == '\n' { break; }
-			ret.push_char( ch );
+			ret.push( ch );
 		}
 		self._putback( '\n' );
 		debug!("read_to_eol: ret = '{}'", ret);
@@ -154,16 +156,16 @@ impl<'rl> Lexer<'rl>
 	{
 		let mut name = String::new();
 		let mut ch = parse_try!(self._getc(), name);
-		while isalnum(ch) || ch == '_'
+		while ch.is_alphanumeric() || ch == '_'
 		{
-			name.push_char( ch );
+			name.push( ch );
 			ch = parse_try!(self._getc(), name);
 		}
 		self._putback(ch);
 		return name;
 	}
 	// Read a number from the input stream
-	fn read_number(&mut self, base: uint) -> u64
+	fn read_number(&mut self, base: u32) -> u64
 	{
 		let mut val = 0;
 		loop
@@ -193,21 +195,21 @@ impl<'rl> Lexer<'rl>
 			if ch == '\\' {
 				let codechar = parse_try!(self._getc(), None);
 				match codechar {
-				'\\' => ret.push_char('\\'),
-				'"' => ret.push_char('"'),
-				'n' => ret.push_char('\n'),
+				'\\' => ret.push('\\'),
+				'"' => ret.push('"'),
+				'n' => ret.push('\n'),
 				'\n' => (),
 				_ => panic!("Unexpected escape code in string '\\{}'", codechar)
 				}
 			}
-			ret.push_char( ch );
+			ret.push( ch );
 		}
 		return Some(ret);
 	}
 	/// @brief Low-level lexer
 	fn get_token_int(&mut self) -> Token
 	{
-		macro_rules! getc( ($err_ret:expr) => ( parse_try!(self._getc(), $err_ret) ) )
+		macro_rules! getc{ ($err_ret:expr) => ( parse_try!(self._getc(), $err_ret) ) }
 		if self.eat_spaces() {
 			return TokEof;
 		}
@@ -350,21 +352,10 @@ impl<'rl> Lexer<'rl>
 		return ret;
 	}
 }
-impl<'rl> ::std::fmt::Show for Lexer<'rl>
+impl<'rl> ::std::fmt::Debug for Lexer<'rl>
 {
 	fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
 		write!(f, "{}:{}", self.filename, self.line)
-	}
-}
-
-fn isspace(ch: char) -> bool {
-	unsafe {
-		return libc::funcs::c95::ctype::isspace(ch as i32) != 0
-	}
-}
-fn isalnum(ch: char) -> bool {
-	unsafe {
-		return libc::funcs::c95::ctype::isalnum(ch as i32) != 0
 	}
 }
 

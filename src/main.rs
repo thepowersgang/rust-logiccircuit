@@ -1,16 +1,19 @@
 // LogicCircuit simulator
 //
 //
-#![feature(globs)]
-#![feature(macro_rules)]
-#![feature(phase)]
-#[phase(plugin, link)] extern crate log;
+#![feature(box_syntax)]
+#[macro_use] extern crate log;
+extern crate env_logger;
 
 extern crate getopts;
-//extern crate std;
 extern crate collections;
 extern crate core;
 extern crate glob;
+
+// HACK!
+fn from_elem<T: Clone, C: ::std::iter::FromIterator<T>>(count: usize, val: T) -> C {
+	::std::iter::repeat(val).take(count).collect()
+}
 
 mod cct_mesh;
 mod parse;
@@ -19,31 +22,33 @@ mod simulator;
 
 enum TestStatus
 {
-	Pass(uint),
-	Fail(uint, String),
-	Timeout(uint),
+	Pass(usize),
+	Fail(usize, String),
+	Timeout(usize),
 }
 
 fn main()
 {
 	println!("main()");
 	// 1. Parse command line arguments
-	let opts = [
-		getopts::optflag("h", "help", "Print help text"),
-		getopts::optflag("", "test", "Run tests"),
-		getopts::optopt("", "test-glob", "Run tests matching glob", "GLOB"),
-		getopts::optflag("", "test-display", "Print display items during tests"),
-		];
+	let mut opts = ::getopts::Options::new();
+	opts.optflag("h", "help", "Print help text");
+	opts.optflag("", "test", "Run tests");
+	opts.optopt("", "test-glob", "Run tests matching glob", "GLOB");
+	opts.optflag("", "test-display", "Print display items during tests");
+
 	println!("> opts = ");
-	let args = match getopts::getopts(std::os::args().as_slice(), opts) {
+	let args_s = ::std::os::args();
+	let args = match opts.parse(args_s.tail())
+		{
 		Ok(m) => m,
 		Err(f) => panic!(f.to_string()),
 		};
-	println!("> args = {}", args.free);
+	println!("> args = {:?}", args.free);
 	
 	if args.opt_present("h")
 	{
-		print_usage( std::os::args()[0].as_slice(), opts );
+		print_usage( &args_s[0], &opts );
 		return ;
 	}
 	
@@ -52,7 +57,7 @@ fn main()
 	}
 	
 	// 2. Load circuit file
-	let mut mesh = match parse::load( args.free[1].as_slice() ) {
+	let mut mesh = match parse::load( &args.free[1] ) {
 		Some(x) => x,
 		None => panic!("Parsing of {} failed", args.free[1])
 		};
@@ -66,7 +71,8 @@ fn main()
 		// Run circuit unit tests
 		
 		let show_display = args.opt_present("test-display");
-		let pat = ::glob::Pattern::new( match args.opt_str("test-glob"){Some(ref v)=>v.as_slice(),_=>"*"} );
+		let test_glob = args.opt_str("test-glob").unwrap_or( String::from_str("*") );
+		let pat = ::glob::Pattern::new(&*test_glob).unwrap();
 
 		// Only flatten tests if required
 		// TODO: Pass a glob to this function so it doesn't flatten unless it will be run
@@ -75,7 +81,7 @@ fn main()
 		// Unit test!
 		for (name,test) in mesh.iter_tests()
 		{
-			if pat.matches(name.as_slice())
+			if pat.matches(&name)
 			{
 				if show_display {
 					println!("TEST: '{}'", name);
@@ -97,7 +103,8 @@ fn main()
 	{
 		// Simulate until stopped
 		let mut sim = ::simulator::Engine::new( &flat );
-		for i in range(0, 20u)
+		let step_count: u32 = 20;
+		for _ in (0 .. step_count)
 		{
 			sim.tick();
 			
@@ -113,7 +120,7 @@ fn main()
 fn run_test(test: &cct_mesh::flat::Test, show_display: bool) -> TestStatus
 {
 	let mut sim = ::simulator::Engine::new( test.get_mesh() );
-	for ticknum in range(0, test.exec_limit())
+	for ticknum in (0 .. test.exec_limit())
 	{
 		sim.tick();
 		
@@ -140,7 +147,7 @@ fn run_test(test: &cct_mesh::flat::Test, show_display: bool) -> TestStatus
 				
 				if have != exp
 				{
-					return TestStatus::Fail(ticknum+1, format!("Assertion #{} failed (line {}) - have:{} != exp:{}",
+					return TestStatus::Fail(ticknum+1, format!("Assertion #{} failed (line {}) - have:{:?} != exp:{:?}",
 						ass_idx, assert.line, have, exp));
 				}
 			}
@@ -149,11 +156,11 @@ fn run_test(test: &cct_mesh::flat::Test, show_display: bool) -> TestStatus
 	TestStatus::Timeout(test.exec_limit())
 }
 
-fn print_usage(program_name: &str, opts: &[getopts::OptGroup])
+fn print_usage(program_name: &str, opts: &::getopts::Options)
 {
-	println!("Usage: {}", getopts::short_usage(program_name, opts));
+	println!("Usage: {}", opts.short_usage(program_name));
 	println!("");
-	::std::io::stdio::print( getopts::usage("Logic gate simulator", opts).as_slice() );
+	println!("{}", opts.usage("Logic gate simulator") );
 }
 
 

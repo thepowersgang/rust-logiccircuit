@@ -1,6 +1,5 @@
 
-#[deriving(Copy)]
-#[deriving(Clone)]
+#[derive(Clone,Copy,Debug)]
 pub enum NodeRef
 {
 	NodeZero,
@@ -9,7 +8,7 @@ pub enum NodeRef
 }
 
 /// Flattened mesh items
-#[deriving(Clone)]
+#[derive(Clone)]
 pub struct ElementInst
 {
 	pub inst: Box<::elements::Element+'static>,
@@ -17,15 +16,14 @@ pub struct ElementInst
 	pub outputs: Vec<NodeRef>,
 }
 
-#[deriving(Default)]
-#[deriving(Clone)]
+#[derive(Clone,Default)]
 pub struct Node
 {
 	pub names: Vec<String>
 }
 
 // Represents a flattened (executable) mesh
-#[deriving(Clone)]
+#[derive(Clone)]
 pub struct Mesh
 {
 	pub n_nodes: uint,
@@ -54,7 +52,7 @@ pub struct TestAssert
 	pub expected: Vec<NodeRef>,
 }
 
-#[deriving(Clone)]
+#[derive(Clone)]
 pub struct Display
 {
 	pub condition: Vec<NodeRef>,
@@ -62,7 +60,7 @@ pub struct Display
 	pub values: Vec<NodeRef>,
 }
 
-#[deriving(Clone)]
+#[derive(Clone)]
 pub struct Breakpoint
 {
 	name: String,
@@ -133,9 +131,9 @@ impl Test
 	}
 	
 	pub fn exec_limit(&self) -> uint { self.exec_limit }
-	pub fn get_mesh(&self) -> &Mesh { self.unit.deref() }
+	pub fn get_mesh(&self) -> &Mesh { &*(self.unit) }
 	pub fn get_completion(&self) -> &Vec<NodeRef> { &self.completion }
-	pub fn iter_asserts(&self) -> ::core::slice::Items<::cct_mesh::flat::TestAssert>
+	pub fn iter_asserts(&self) -> ::core::slice::Iter<::cct_mesh::flat::TestAssert>
 	{
 		self.assertions.iter()
 	}
@@ -183,9 +181,9 @@ pub fn linklist_to_noderefs(links: &super::LinkList) -> Vec<NodeRef>
 		let linkref = link.borrow();
 		//debug!("Link '{}'", linkref.name);
 		let nr = match linkref.name.as_slice() {
-			"=0" => NodeZero,
-			"=1" => NodeOne,
-			_ => NodeId( link.borrow().get_alias().unwrap() ),
+			"=0" => NodeRef::NodeZero,
+			"=1" => NodeRef::NodeOne,
+			_ => NodeRef::NodeId( link.borrow().get_alias().unwrap() ),
 			};
 		rv.push( nr );
 	}
@@ -199,7 +197,7 @@ fn noderefs_aliased(innodes: &Vec<NodeRef>, aliases: &Vec<Option<NodeRef>>) -> V
 	{
 		let nr = match *node
 			{
-			NodeId(id) => {
+			NodeRef::NodeId(id) => {
 				if id >= aliases.len() {
 					panic!("BUG - Node {} (idx {}) not in aliases table (only {} entries)",
 						id, i, aliases.len());
@@ -209,8 +207,7 @@ fn noderefs_aliased(innodes: &Vec<NodeRef>, aliases: &Vec<Option<NodeRef>>) -> V
 				}
 				aliases[id].unwrap()
 				},
-			NodeZero => NodeZero,
-			NodeOne  => NodeOne,
+			lit @ _ => lit,
 			};
 		rv.push( nr );
 	}

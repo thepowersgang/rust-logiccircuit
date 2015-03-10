@@ -4,6 +4,7 @@
 use std::default::Default;
 use parse::lex::*;
 use parse::lex::Token::*;
+use std::io::ReadExt;
 
 mod lex;
 
@@ -12,31 +13,37 @@ struct Parser<'stream>
 	lexer: lex::Lexer<'stream>,
 }
 
-macro_rules! is_enum( ($val:expr $exp:pat) => (match $val { $exp => true, _ => false }) )
-macro_rules! exp_enum( ($val:expr $exp:ident) => (match $val { $exp(x) => x, _ => panic!("Expected enum {}", $exp) }) )
-macro_rules! parse_try( ($e:expr, $rv:expr) => (match $e {Ok(v) => v, Err(e) => {error!("Read error: {}", e); return $rv}}) )
-macro_rules! syntax_error( ($lexer:expr, $($arg:tt)*) => ({
+macro_rules! is_enum{
+	($val:expr, $exp:pat) => (match $val { $exp => true, _ => false })
+}
+macro_rules! exp_enum{
+	($val:expr, $exp:ident) => (match $val { $exp(x) => x, _ => panic!("Expected enum {}", $exp) })
+}
+macro_rules! parse_try{
+	($e:expr, $rv:expr) => (match $e {Ok(v) => v, Err(e) => {error!("Read error: {}", e); return $rv}})
+}
+macro_rules! syntax_error{ ($lexer:expr, $($arg:tt)*) => ({
 	let p = &$lexer;
-	panic!("Syntax Error: {} {}", p, format!($($arg)*));
-}) )
-macro_rules! syntax_assert_raw( ($parser:expr, $tok:expr, $filter:pat => $val:expr, $msg:expr) => ({
+	panic!("Syntax Error: {:?} {}", p, format!($($arg)*));
+}) }
+macro_rules! syntax_assert_raw{ ($parser:expr, $tok:expr, $filter:pat => $val:expr, $msg:expr) => ({
 	let tok = $tok;
 	match tok {
 		$filter => $val,
 		_ => syntax_error!($parser, "{}, got {}", $msg, tok)
 	}
-}) )
-macro_rules! syntax_warn( ($lexer:expr, $($arg:tt)*) => ({
+}) }
+macro_rules! syntax_warn{ ($lexer:expr, $($arg:tt)*) => ({
 	let p = &$lexer;
-	println!("{}:warning: {}", p, format!($($arg)*));
-}) )
-macro_rules! syntax_assert_get( ($parser:expr, $filter:pat => $val:expr, $msg:expr) => ({
+	println!("{:?}:warning: {}", p, format!($($arg)*));
+}) }
+macro_rules! syntax_assert_get{ ($parser:expr, $filter:pat => $val:expr, $msg:expr) => ({
 	syntax_assert_raw!($parser.lexer, ($parser).get_token(), $filter => $val, $msg)
-}) )
+}) }
 
 impl<'rl> Parser<'rl>
 {
-	fn new(instream: &'rl mut Reader, root_filename: &str) -> Parser<'rl> {
+	fn new<'a>(instream: lex::InStream<'a>, root_filename: &str) -> Parser<'a> {
 		Parser {
 			lexer: Lexer::new(instream, root_filename),
 		}
@@ -105,7 +112,6 @@ impl<'rl> Parser<'rl>
 	}
 	
 	/// Read a single value (link, group, constant, or an embedded element)
-	#[allow(deprecated)] // < for .get
 	fn get_value(&mut self, values: &mut ::cct_mesh::LinkList, meshroot: &::cct_mesh::Root, unit: &mut ::cct_mesh::Unit)
 	{
 		let tok = self.get_token();
@@ -121,7 +127,7 @@ impl<'rl> Parser<'rl>
 					1
 				};
 			debug!("get_value: Line '{}' * {}", name, count);
-			for i in range(0, count) {
+			for _ in range(0, count) {
 				values.push( unit.get_link(&name) );
 			}
 			},
@@ -142,7 +148,7 @@ impl<'rl> Parser<'rl>
 					if self.look_ahead() != TokColon
 					{
 						// Single
-						values.push( group.get(start as uint).clone() );
+						values.push( group[start as uint].clone() );
 						debug!("Group single {} #{}", name, start);
 					}
 					else
@@ -156,7 +162,7 @@ impl<'rl> Parser<'rl>
 						}
 						for i in range_inc(start as int, end as int) {
 							debug!("Group item @{}[{}]", name, i);
-							values.push( group.get(i as uint).clone() );
+							values.push( group[i as uint].clone() );
 						}
 					}
 					let tok = self.get_token();
@@ -212,7 +218,7 @@ impl<'rl> Parser<'rl>
 		TokParenOpen => {
 			let (elename, params, inputs) = self.get_element(meshroot, unit);
 			syntax_assert_get!(self, TokParenClose => (), "Expected TokParenClose after sub-element");
-			values.extend( unit.append_element( meshroot, elename, params, inputs, None ).move_iter() );
+			values.extend( unit.append_element( meshroot, elename, params, inputs, None ).into_iter() );
 			},
 		_ => syntax_error!(self.lexer, "Expected TokLine or TokGroup when parsing value, got {}", tok)
 		}
@@ -221,7 +227,7 @@ impl<'rl> Parser<'rl>
 	/// \note Used for inputs and outputs (defines groups it finds)
 	fn get_connections(&mut self, unit: &mut ::cct_mesh::Unit) -> ::cct_mesh::LinkList
 	{
-		let mut ret = ::cct_mesh::LinkList {..Default::default()};
+		let mut ret: ::cct_mesh::LinkList = Default::default();	//::cct_mesh::LinkList {..Default::default()};
 		loop
 		{
 			let tok = self.get_token();
@@ -289,13 +295,13 @@ impl<'rl> Parser<'rl>
 	/// Read a comma-separated list of values
 	fn get_value_list(&mut self, meshroot: &::cct_mesh::Root, unit: &mut ::cct_mesh::Unit) -> ::cct_mesh::LinkList
 	{
-		let mut values = ::cct_mesh::LinkList {..Default::default()};
+		let mut values = Default::default();
 		
 		loop
 		{
 			self.get_value(&mut values, meshroot, unit);
 			let tok = self.get_token();
-			if !is_enum!(tok TokComma) {
+			if !is_enum!(tok, TokComma) {
 				self.put_back(tok);
 				break
 			}
@@ -304,11 +310,10 @@ impl<'rl> Parser<'rl>
 	}
 	
 	/// Handle a descriptor line (<outputs> = ELEMENT <inputs>)
-	#[allow(deprecated)]	// < For .get(), as indexing is buggy
 	fn do_line(&mut self, meshroot: &::cct_mesh::Root, unit: &mut ::cct_mesh::Unit)
 	{
-		let outputs = if is_enum!(self.look_ahead() TokIdent(_)) {
-				::cct_mesh::LinkList {..Default::default()}
+		let outputs = if is_enum!(self.look_ahead(), TokIdent(_)) {
+				Default::default()
 			}
 			else {
 				// Get destination line list
@@ -318,7 +323,7 @@ impl<'rl> Parser<'rl>
 			};
 		
 		// If the next token is an identifier, then it's a typical descriptor
-		if is_enum!(self.look_ahead() TokIdent(_))
+		if is_enum!(self.look_ahead(), TokIdent(_))
 		{
 			let (name,params,inputs) = self.get_element(meshroot, unit);
 			syntax_assert_get!(self, TokNewline => (), "Expected newline after element descriptor");
@@ -336,8 +341,8 @@ impl<'rl> Parser<'rl>
 			// Call .bind on all output lines, to set their value to that of the input
 			// TODO: .bind should check that the lefthand side has not yet been rebound
 			// outputs,inputs: Vec<Rc<Link>>
-			for i in range(0, outputs.len()) {
-				outputs.get(i).borrow_mut().bind( inputs.get(i) );
+			for (out,inp) in outputs.iter().zip(inputs.iter()) {
+				out.borrow_mut().bind( inp );
 			}
 		}
 	}
@@ -505,7 +510,7 @@ pub fn load(filename: &str) -> Option<::cct_mesh::Root>
 {
 	debug!("load(filename='{}')", filename);
 	// 1. Spin up a yasm preprocessor
-	let mut subproc = match ::std::io::Command::new("yasm").arg("-e").arg(filename).spawn() {
+	let mut subproc = match ::std::process::Command::new("yasm").arg("-e").arg(filename).spawn() {
 		Ok(child) => child,
 		Err(e) => panic!("Failed to execute yasm to preprocess file. Reason: {}", e),
 		};
@@ -514,7 +519,8 @@ pub fn load(filename: &str) -> Option<::cct_mesh::Root>
 		None => panic!("BUGCHECK - Stdout was None"),
 		};
 	// 2. Create a parser object
-	let mut parser = Parser::new(output_pipe, filename);
+	let mut input_iter = output_pipe.chars().map(|r| r.unwrap());
+	let mut parser = Parser::new(&mut input_iter, filename);
 	
 	// 3. Create mesh root
 	let mut meshroot = ::cct_mesh::Root::new();

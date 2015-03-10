@@ -5,4 +5,7 @@ version = "0.0.1"
 authors = ["John Hodge <tpg@mutabah.net>"]
 
 [dependencies]
-glob = "~0.1.0"
+getopts = "*"
+glob = "*"
+log = "*"
+env_logger = "*"

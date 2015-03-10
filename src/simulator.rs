@@ -17,40 +17,41 @@ pub struct Engine<'a>
 	newstate: Vec<bool>,
 }
 
-macro_rules! getval( ($state:expr, $nr:expr) => ( {use cct_mesh::flat::NodeRef;
+macro_rules! getval{ ($state:expr, $nr:expr) => ( {use cct_mesh::flat::NodeRef;
 	match $nr {
 	NodeRef::NodeOne => true,
 	NodeRef::NodeZero => false,
 	NodeRef::NodeId(id) => $state[id],
-	}}))
+	}})
+}
 
 impl<'a> Engine<'a>
 {
-	pub fn new<'a>(mesh: &'a ::cct_mesh::flat::Mesh) -> Engine<'a>
+	pub fn new(mesh: &::cct_mesh::flat::Mesh) -> Engine
 	{
 		Engine {
 			mesh: mesh,
 			elements: mesh.elements.iter().map(
 				|e| Ele {
 					inst: e.clone(),
-					input_vals:  Vec::from_elem(e.inputs.len(), false),
-					output_vals: Vec::from_elem(e.outputs.len(), false),
+					input_vals:  ::from_elem(e.inputs.len(), false),
+					output_vals: ::from_elem(e.outputs.len(), false),
 					}
 				).collect(),
-			curstate: Vec::from_elem(mesh.n_nodes, false),
-			newstate: Vec::from_elem(mesh.n_nodes, false),
+			curstate: ::from_elem(mesh.n_nodes, false),
+			newstate: ::std::iter::repeat(false).take(mesh.n_nodes).collect(),
 		}
 	}
 	
 	pub fn tick(&mut self)
 	{
-		for ele in self.elements.mut_iter()
+		for ele in self.elements.iter_mut()
 		{
 			// Obtain inputs
-			for (v,i) in ele.input_vals.mut_iter().zip( ele.inst.inputs.iter() ) {
+			for (v,i) in ele.input_vals.iter_mut().zip( ele.inst.inputs.iter() ) {
 				*v = getval!(self.curstate, *i);
 			}
-			ele.output_vals.mut_iter().map( |v| *v = false ).count();
+			ele.output_vals.iter_mut().map( |v| *v = false ).count();
 
 			// Update
 			ele.inst.inst.update(&mut ele.output_vals, &ele.input_vals);
@@ -58,11 +59,11 @@ impl<'a> Engine<'a>
 			// Save results
 			for (line,val) in ele.inst.outputs.iter().zip( ele.output_vals.iter() )
 			{
-				debug!("{} = {}", line, val);
+				debug!("{:?} = {:?}", line, val);
 				match *line
 				{
 				::cct_mesh::flat::NodeRef::NodeId(id) => {
-					*(self.newstate.get_mut(id)) |= *val
+					self.newstate[id] |= *val
 					},
 				_ => {
 					},
@@ -70,7 +71,7 @@ impl<'a> Engine<'a>
 			}
 		}
 		::std::mem::swap( &mut self.curstate, &mut self.newstate );
-		self.newstate.mut_iter().map( |v| *v = false ).count();
+		self.newstate.iter_mut().map( |v| *v = false ).count();
 	}
 	
 	/// @param logical_and - If true, perform a logical AND on the values, else do an OR
@@ -116,7 +117,7 @@ impl<'a> Engine<'a>
 		{
 			if self.are_set(&disp.condition, true)
 			{
-				debug!("Display '{}' with '{}'", disp.text, disp.values);
+				debug!("Display '{}' with '{:?}'", disp.text, disp.values);
 				print_display(disp.text.as_slice(), &self.get_values(&disp.values));
 				rv = true;
 			}
@@ -127,7 +128,6 @@ impl<'a> Engine<'a>
 
 fn print_display(fmtstr: &str, vals: &Vec<bool>)
 {
-	macro_rules! getc( ($it:expr,$tgt:tt) => () )
 	let mut idx = 0;
 	
 	let mut it = fmtstr.chars();
@@ -150,8 +150,8 @@ fn print_display(fmtstr: &str, vals: &Vec<bool>)
 			if count == 0 {
 				count = 1;
 			}
-			let val = read_uint(vals, idx, count);
-			idx += count;
+			let val = read_uint(vals, idx, count as u8);
+			idx += count as usize;
 			match c
 			{
 			'i' => print!("{}", val),
@@ -169,17 +169,17 @@ fn print_display(fmtstr: &str, vals: &Vec<bool>)
 	{
 		print!(">> ");
 		for i in range(idx, vals.len()) {
-			print!("{}", match vals[i] {false=>0u,true=>1u});
+			print!("{}", match vals[i] {false=>0,true=>1});
 		}
 	}
 	println!("");
 }
 
 /// Read an unsigned integer from a sequence of bools
-pub fn read_uint(inlines: &Vec<bool>, base: uint, count: uint) -> u64
+pub fn read_uint(inlines: &Vec<bool>, base: usize, count: u8) -> u64
 {
 	let mut val: u64 = 0;
-	for i in range(0,count)
+	for i in range(0,count as usize)
 	{
 		if inlines[base+i]
 		{

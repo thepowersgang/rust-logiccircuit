@@ -7,16 +7,18 @@ use std::rc::Rc;
 use std::rc::Weak;
 use std::cell::RefCell;
 use std::default::Default;
+use std::collections::HashMap;
+use std::collections::LinkedList;
 
 use cct_mesh::flat::NodeRef;
 use cct_mesh::flat::NodeRef::{NodeId,NodeOne,NodeZero};
 
 pub mod flat;
 
-macro_rules! chain( ($base:expr $(.. $next:expr)+) => ( $base $(.chain($next) )+ ) )
-macro_rules! zip  ( ($base:expr $(, $next:expr)+) => ( $base $(.zip($next) )+ ) )
+macro_rules! chain{ ($base:expr, $($next:expr),+) => ( $base $(.chain($next) )+ ) }
+macro_rules! zip  { ($base:expr, $($next:expr),+) => ( $base $(.zip($next) )+ ) }
 
-#[deriving(Default)]
+#[derive(Default)]
 struct Link
 {
 	name: String,
@@ -27,7 +29,7 @@ struct Link
 pub type LinkRef = Rc<RefCell<Link>>;
 pub type LinkWRef = Weak<RefCell<Link>>;
 pub type LinkList = Vec<LinkRef>;
-type Flatmap = ::collections::TreeMap<String,Rc<flat::Mesh>>;
+type Flatmap = HashMap<String,Rc<flat::Mesh>>;
 
 pub struct Element
 {
@@ -36,11 +38,11 @@ pub struct Element
 	outputs: LinkList,
 }
 
-//#[deriving(Default)]
+//#[derive(Default)]
 //struct VisGroup
 //{
 //	name: String,
-//	elements: ::collections::DList<Element>
+//	elements: LinkedList<Element>
 //}
 
 struct Breakpoint
@@ -71,17 +73,17 @@ pub struct Unit
 	
 	link_zero: LinkRef,
 	link_one: LinkRef,
-	anon_links: ::collections::DList<LinkRef>,
-	links:  ::collections::TreeMap<String,LinkRef>,	// Definitive list of links
-	groups: ::collections::TreeMap<String,LinkList>,
+	anon_links: LinkedList<LinkRef>,
+	links:  ::std::collections::HashMap<String,LinkRef>,	// Definitive list of links
+	groups: ::std::collections::HashMap<String,LinkList>,
 	
-	elements: ::collections::DList<Element>,
-	subunits: ::collections::DList<UnitRef>,
+	elements: LinkedList<Element>,
+	subunits: LinkedList<UnitRef>,
 	
-	breakpoints: ::collections::DList<Breakpoint>,
-	disp_items: ::collections::DList<DisplayItem>,
+	breakpoints: LinkedList<Breakpoint>,
+	disp_items: LinkedList<DisplayItem>,
 	
-	//visgroups: ::collections::DList<VisGroup>,
+	//visgroups: LinkedList<VisGroup>,
 	
 	flattened: Option<Rc<flat::Mesh>>,
 }
@@ -94,24 +96,24 @@ struct TestAssert
 	expected: LinkList,
 }
 
-#[deriving(Default)]
+#[derive(Default)]
 pub struct Test
 {
 	exec_limit: uint,
 	completion: LinkList,
 	unit: Unit,
-	assertions: ::collections::DList<TestAssert>,
+	assertions: LinkedList<TestAssert>,
 }
 
-#[deriving(Default)]
+#[derive(Default)]
 pub struct Root
 {
 	rootunit: Unit,
-	units: ::collections::TreeMap<String,Unit>,
-	tests: ::collections::TreeMap<String,Test>,
+	units: ::std::collections::HashMap<String,Unit>,
+	tests: ::std::collections::HashMap<String,Test>,
 	
 	flat_units: Flatmap,
-	flat_tests: ::collections::TreeMap<String,flat::Test>,
+	flat_tests: ::std::collections::HashMap<String,flat::Test>,
 }
 
 impl Clone for Box<::elements::Element+'static>
@@ -121,21 +123,16 @@ impl Clone for Box<::elements::Element+'static>
 	}
 }
 
-macro_rules! exp( ($val:expr, $e:pat => $res:expr) => (match $val { $e=>$res, _=>panic!("exp!")}))
+macro_rules! exp{ ($val:expr, $e:pat => $res:expr) => (match $val { $e=>$res, _=>panic!("exp!")}) }
 
-impl Default for RefCell<Link> {
-	fn default() -> RefCell<Link> {
-		RefCell::new(Link {name: "<default>".to_string(), ..Default::default()})
-	}
-}
 impl ::core::cmp::Ord for Link {
-	fn cmp(&self, x: &Link) -> Ordering { self.name.cmp(&x.name) }
+	fn cmp(&self, x: &Link) -> ::std::cmp::Ordering { self.name.cmp(&x.name) }
 }
 impl ::core::cmp::PartialEq for Link {
 	fn eq(&self, x: &Link) -> bool { self.name == x.name }
 }
 impl ::core::cmp::PartialOrd for Link {
-	fn partial_cmp(&self, x: &Link) -> Option<Ordering> { Some(self.cmp(x)) }
+	fn partial_cmp(&self, x: &Link) -> Option<::std::cmp::Ordering> { Some(self.cmp(x)) }
 }
 impl ::core::cmp::Eq for Link
 {
@@ -153,7 +150,8 @@ impl Link
 		assert!( self.aliased == None );
 		match self.reflink {
 		Some(ref l) => {
-			debug!("Link '{}' refers to '{}'", self.name, l.upgrade().unwrap().borrow().name);
+			let t = l.upgrade().unwrap();
+			debug!("Link '{}' refers to '{:?}'", self.name, t.borrow().name);
 			false
 			},
 		None => {
@@ -178,7 +176,7 @@ impl Link
 					if other_link.reflink.is_none()
 					{
 						self.aliased = other_link.aliased;
-						debug!("Indirect tag of '{}' from '{}' ({})",
+						debug!("Indirect tag of '{}' from '{}' ({:?})",
 							self.name, other_link.name, self.aliased);
 						assert!(self.aliased != None);
 						break;
@@ -197,7 +195,7 @@ impl Link
 		return self.aliased;
 	}
 }
-impl ::core::fmt::Show for ::core::cell::RefCell<::cct_mesh::Link>
+impl ::std::fmt::Debug for ::core::cell::RefCell<::cct_mesh::Link>
 {
 	fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
 		let link = self.borrow();
@@ -206,18 +204,6 @@ impl ::core::fmt::Show for ::core::cell::RefCell<::cct_mesh::Link>
 		}
 		else {
 			write!(f, "{}", self.borrow().name)
-		}
-	}
-}
-
-impl ::core::fmt::Show for NodeRef
-{
-	fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-		match *self
-		{
-		NodeOne => write!(f, "NodeOne"),
-		NodeZero => write!(f, "NodeZero"),
-		NodeId(id) => write!(f, "NodeId({})", id),
 		}
 	}
 }
@@ -232,16 +218,16 @@ impl Default for Unit
 			
 			link_zero: Unit::make_link( "=0".to_string() ),
 			link_one: Unit::make_link( "=1".to_string() ),
-			anon_links: ::collections::DList::new(),
-			links:  ::collections::TreeMap::new(),	// Definitive list of links
-			groups: ::collections::TreeMap::new(),
+			anon_links: LinkedList::new(),
+			links:  ::std::collections::HashMap::new(),	// Definitive list of links
+			groups: ::std::collections::HashMap::new(),
 			
-			elements: ::collections::DList::new(),
-			subunits: ::collections::DList::new(),
+			elements: LinkedList::new(),
+			subunits: LinkedList::new(),
 			
-			breakpoints: ::collections::DList::new(),
-			disp_items: ::collections::DList::new(),
-			//visgroups: ::collections::DList::new(),
+			breakpoints: LinkedList::new(),
+			disp_items: LinkedList::new(),
+			//visgroups: LinkedList::new(),
 			flattened: None,
 		}
 	}
@@ -268,7 +254,7 @@ impl Unit
 		}
 	}
 	pub fn get_link(&mut self, name: &String) -> LinkRef {
-		match self.links.find(name)
+		match self.links.get(name)
 		{
 		Some(x) => return x.clone(),
 		None => ()
@@ -280,15 +266,11 @@ impl Unit
 	}
 	fn make_anon_link(&mut self) -> LinkRef {
 		let link = Unit::make_link( format!("#{}", self.anon_links.len()) );
-		self.anon_links.push( link.clone() );
+		self.anon_links.push_back( link.clone() );
 		return link;
 	}
 	pub fn make_anon_links(&mut self, count: uint) -> LinkList {
-		let mut ret = Vec::with_capacity(count);
-		for i in range(0,count) {
-			ret.push( self.make_anon_link() );
-		}
-		return ret;
+		::std::iter::range(0, count).map(|_| self.make_anon_link()).collect()
 	}
 	
 	pub fn make_group(&mut self, name: &String, size: uint) {
@@ -300,7 +282,7 @@ impl Unit
 		debug!("make_group: {} created with {} items", *name, size);
 	}
 	pub fn get_group(&self, name: &String) -> Option<&LinkList> {
-		return self.groups.find(name)
+		return self.groups.get(name)
 	}
 	
 	pub fn set_input(&mut self, inputs: LinkList) -> bool {
@@ -325,8 +307,7 @@ impl Unit
 	
 	pub fn append_element(&mut self, meshroot: &Root, name: String, params: Vec<u64>, inputs: LinkList, outputs: Option<LinkList>) -> LinkList
 	{
-		debug!("append_element('{}', {}, in={}, out={})",
-			name, params, inputs, outputs);
+		debug!("append_element('{}', {:?}, in={:?}, out={:?})", name, params, inputs, outputs);
 		match meshroot.get_unit(&name)
 		{
 		// Referencing a sub-unit
@@ -345,18 +326,18 @@ impl Unit
 				inputs: inputs,
 				outputs: out.clone(),
 				};
-			self.subunits.push(r);
+			self.subunits.push_back(r);
 			out
 			},
 		None => {
-			let ele = match ::elements::create(&name, &params, inputs.len()) {
+			let ele = match ::elements::create(&name, &*params, inputs.len()) {
 				Ok(e) => e,
 				Err(msg) => panic!("Error in creating '{}' - {}", name, msg),
 				};
 			
 			let out = match outputs { Some(o) => o, None => self.make_anon_links( ele.get_outputs(inputs.len()) ) };
 			
-			self.elements.push( Element {
+			self.elements.push_back( Element {
 				inst: ele,
 				inputs: inputs,
 				outputs: out.clone(),
@@ -366,20 +347,20 @@ impl Unit
 		}
 	}
 	pub fn append_display(&mut self, cond: LinkList, text: String, values: LinkList) {
-		self.disp_items.push( DisplayItem {
+		self.disp_items.push_back( DisplayItem {
 			condition: cond,
 			text: text,
 			values: values,
 			});
 	}
 	pub fn append_breakpoint(&mut self, name: String, cond: LinkList) {
-		self.breakpoints.push( Breakpoint {
+		self.breakpoints.push_back( Breakpoint {
 			conds: cond,
 			name: name,
 			});
 	}
 	
-	pub fn flatten(&mut self, pre_flattened: &Map<String,Rc<flat::Mesh>>) -> Rc<flat::Mesh>
+	pub fn flatten(&mut self, pre_flattened: &HashMap<String,Rc<flat::Mesh>>) -> Rc<flat::Mesh>
 	{
 		debug!("Flattening unit '{}'", self.name);
 		let subunits = self.flatten_subunits(pre_flattened);
@@ -392,12 +373,12 @@ impl Unit
 		// Count nodes
 		debug!("Tagging anon links (Unit '{}')", self.name);
 		// - Tag (and count) all links that arent not referencing another link
-		for link in chain!( self.anon_links.iter() .. self.links.values() )
+		for link in chain!( self.anon_links.iter(), self.links.values() )
 		{
 			if link.borrow_mut().tag(n_links) { n_links += 1; }
 		}
 		// - And once all non-reference links are tagged, copy those tags to the reference links
-		for link in chain!( self.anon_links.iter() .. self.links.values() )
+		for link in chain!( self.anon_links.iter(), self.links.values() )
 		{
 			link.borrow_mut().tag_from_ref();
 		}
@@ -416,8 +397,8 @@ impl Unit
 			// Add node count, ignoring inputs and outputs
 			n_links += subu.n_nodes;
 			debug!("SubUnit #{} - {} in, {} out", subu_ref.name, subu.inputs.len(), subu.outputs.len());
-			for (i,e) in chain!( subu.inputs.iter().enumerate() .. subu.outputs.iter().enumerate() ) {
-				debug!("ext {}=#{}", i, *e);
+			for (i,e) in chain!( subu.inputs.iter().enumerate(), subu.outputs.iter().enumerate() ) {
+				debug!("ext {}=#{:?}", i, *e);
 				match *e { NodeId(_) => { n_links -= 1; }, _=>{}}
 			}
 			// Add breakpoints and display items
@@ -482,7 +463,7 @@ impl Unit
 		let mut bind_node_idx = n_local_links;
 		for (i,subu) in self.subunits.iter().enumerate()
 		{
-			bind_node_idx += self.flatten_merge_subunit(&mut ret, subunits.get(i).deref(), subu, bind_node_idx);
+			bind_node_idx += self.flatten_merge_subunit(&mut ret, &*subunits[i], subu, bind_node_idx);
 		}
 		assert!(bind_node_idx == n_links);
 		assert!(ret.elements.len() == n_eles);
@@ -503,7 +484,7 @@ impl Unit
 	{
 		let inputs = flat::linklist_to_noderefs( &subu.inputs );
 		let outputs = flat::linklist_to_noderefs( &subu.outputs );
-		let mut aliases = Vec::<Option<NodeRef>>::from_elem( flattened.n_nodes, None );
+		let mut aliases: Vec<Option<NodeRef>> = ::from_elem( flattened.n_nodes, None );
 		
 		assert_eq!( flattened.inputs.len(),  inputs.len()  );
 		assert_eq!( flattened.outputs.len(), outputs.len() );
@@ -513,21 +494,21 @@ impl Unit
 		for (j,noderef) in flattened.inputs.iter().enumerate()
 		{
 			let inner_node = exp!(*noderef, NodeId(id) => id);
-			*(aliases.get_mut(inner_node)) = Some(inputs[j]);
+			aliases[inner_node] = Some(inputs[j]);
 		}
 		for (j,noderef) in flattened.outputs.iter().enumerate()
 		{
 			let inner_node = exp!(*noderef,   NodeId(id) => id);
-			*(aliases.get_mut(inner_node)) = Some(outputs[j]);
+			aliases[inner_node] = Some(outputs[j]);
 		}
 		
 		// Count (and alias) all nodes that were not external links
 		let mut unbound_nodes = 0u;
-		for (j,alias) in aliases.mut_iter().enumerate()
+		for (_j,alias) in aliases.iter_mut().enumerate()
 		{
 			if alias.is_none()
 			{
-				//debug!("Alias inner #{} to outer #NodeId({}) (int)", j, bind_node_idx);
+				//debug!("Alias inner #{} to outer #NodeId({}) (int)", _j, bind_node_idx);
 				*alias = Some( NodeId(bind_node_idx + unbound_nodes) );
 				unbound_nodes += 1;
 			}
@@ -557,12 +538,12 @@ impl Unit
 		return unbound_nodes;
 	}
 	/// Returns a vector references to the flattend meshes of all sub-units referenced by this unit
-	fn flatten_subunits(&self, pre_flattened: &Map<String,Rc<flat::Mesh>>) -> Vec<Rc<flat::Mesh>>
+	fn flatten_subunits(&self, pre_flattened: &HashMap<String,Rc<flat::Mesh>>) -> Vec<Rc<flat::Mesh>>
 	{
 		let mut ret = Vec::with_capacity(self.subunits.len());
 		for unitref in self.subunits.iter()
 		{
-			let unit = match pre_flattened.find(&unitref.name) {
+			let unit = match pre_flattened.get(&unitref.name) {
 				Some(x) => x.clone(),
 				None => panic!("BUG - Subunit '{}' referenced by '{}' not yet converted", unitref.name, self.name),
 				};
@@ -603,7 +584,7 @@ impl Test
 		}
 	}
 	pub fn add_assert(&mut self, line: uint, conds: LinkList, vals: LinkList, exp: LinkList) {
-		self.assertions.push(TestAssert{
+		self.assertions.push_back(TestAssert{
 			line: line,
 			conditions: conds,
 			values: vals,
@@ -639,20 +620,20 @@ impl Root
 		return &mut self.rootunit;
 	}
 	pub fn add_unit(&mut self, name: &String) -> Option<&mut Unit> {
-		match self.units.find_mut(name)
+		match self.units.get_mut(name)
 		{
 		Some(_) => return None,
 		None => ()
 		}
 		let val = Unit::new(name);
 		self.units.insert(name.clone(), val);
-		return self.units.find_mut(name);
+		return self.units.get_mut(name);
 	}
 	pub fn get_unit(&self, name: &String) -> Option<&Unit> {
-		return self.units.find(name);
+		return self.units.get(name);
 	}
 	pub fn add_test(&mut self, name: &String, exec_limit: uint) -> Option<&mut Test> {
-		match self.tests.find_mut(name)
+		match self.tests.get_mut(name)
 		{
 		Some(_) => return None,
 		None => ()
@@ -660,18 +641,18 @@ impl Root
 		
 		let val = Test::new(name, exec_limit);
 		self.tests.insert(name.clone(), val);
-		return self.tests.find_mut(name);
+		return self.tests.get_mut(name);
 	}
 	
 	pub fn flatten_root(&mut self) -> flat::Mesh
 	{
-		let mut flat_units = ::collections::TreeMap::new();
+		let mut flat_units = ::std::collections::HashMap::new();
 		for name in self.rootunit.get_subunits().iter()
 		{
 			flatten_unit( &mut self.units, &mut flat_units, name );
 		}
 		self.flat_units = flat_units;
-		let ret = self.rootunit.flatten(&self.flat_units).deref().clone();
+		let ret = (*self.rootunit.flatten(&self.flat_units)).clone();
 		return ret;
 	}
 	pub fn flatten_tests(&mut self)
@@ -684,27 +665,27 @@ impl Root
 				flatten_unit(&mut self.units, &mut self.flat_units, name);
 			}
 		}
-		for (name,test) in self.tests.mut_iter()
+		for (name,test) in self.tests.iter_mut()
 		{
 			self.flat_tests.insert( name.clone(), test.flatten(&self.flat_units) );
 		}
 	}
 	
-	pub fn iter_tests(&self) -> ::collections::treemap::Entries<String,flat::Test>
+	pub fn iter_tests(&self) -> ::std::collections::hash_map::Iter<String,flat::Test>
 	{
 		self.flat_tests.iter()
 	}
 }
 
-fn flatten_unit(units: &mut TreeMap<String,Unit>, flat_units: &mut Flatmap, name: &String)
+fn flatten_unit(units: &mut HashMap<String,Unit>, flat_units: &mut Flatmap, name: &String)
 {
-	if flat_units.find(name).is_none()
+	if flat_units.get(name).is_none()
 	{
-		for su_name in units.find(name).unwrap().get_subunits().iter()
+		for su_name in units[*name].get_subunits().iter()
 		{
 			flatten_unit(units, flat_units, su_name);
 		}
-		let unit = units.find_mut(name).unwrap();
+		let unit = units.get_mut(name).unwrap();
 		let flat = unit.flatten(&*flat_units);
 		flat_units.insert( name.clone(), flat );
 	}
