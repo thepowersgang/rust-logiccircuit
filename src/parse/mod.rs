@@ -127,7 +127,7 @@ impl<'rl> Parser<'rl>
 					1
 				};
 			debug!("get_value: Line '{}' * {}", name, count);
-			for _ in range(0, count) {
+			for _ in (0 .. count) {
 				values.push( unit.get_link(&name) );
 			}
 			},
@@ -208,7 +208,7 @@ impl<'rl> Parser<'rl>
 			}
 			
 			debug!("get_value: Constant {}[{}:{}] * {}", val, start, end, count);
-			for _ in range(0,count) {
+			for _ in (0 .. count) {
 				for i in range_inc(start as int, end as int) {
 					values.push( unit.get_constant( (val >> i as uint) & 1 == 1 ) );
 				}
@@ -394,7 +394,7 @@ impl RootState {
 
 fn handle_meta(parser: &mut Parser, meshroot: &mut ::cct_mesh::Root, state: &mut RootState, name: String)
 {
-	match name.as_slice()
+	match &*name
 	{
 	"defunit" => {
 		let unitname = syntax_assert_get!(parser, TokIdent(v) => v, "Expected TokIdent after #defunit");

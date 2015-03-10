@@ -309,7 +309,7 @@ impl<'rl> Lexer<'rl>
 			TokComment => (),
 			// NASM Preprocessor statements
 			TokPreproc(stmt) => {
-				match stmt.as_slice()
+				match &*stmt
 				{
 				"line" => {
 					// %line <line>+<unk> <filename>

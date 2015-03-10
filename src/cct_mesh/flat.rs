@@ -133,7 +133,7 @@ impl Test
 	pub fn exec_limit(&self) -> uint { self.exec_limit }
 	pub fn get_mesh(&self) -> &Mesh { &*(self.unit) }
 	pub fn get_completion(&self) -> &Vec<NodeRef> { &self.completion }
-	pub fn iter_asserts(&self) -> ::core::slice::Iter<::cct_mesh::flat::TestAssert>
+	pub fn iter_asserts(&self) -> ::std::slice::Iter<::cct_mesh::flat::TestAssert>
 	{
 		self.assertions.iter()
 	}
@@ -180,7 +180,7 @@ pub fn linklist_to_noderefs(links: &super::LinkList) -> Vec<NodeRef>
 	{
 		let linkref = link.borrow();
 		//debug!("Link '{}'", linkref.name);
-		let nr = match linkref.name.as_slice() {
+		let nr = match &*linkref.name {
 			"=0" => NodeRef::NodeZero,
 			"=1" => NodeRef::NodeOne,
 			_ => NodeRef::NodeId( link.borrow().get_alias().unwrap() ),

@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::collections::LinkedList;
 
 use cct_mesh::flat::NodeRef;
-use cct_mesh::flat::NodeRef::{NodeId,NodeOne,NodeZero};
+use cct_mesh::flat::NodeRef::*;
 
 pub mod flat;
 
@@ -125,16 +125,16 @@ impl Clone for Box<::elements::Element+'static>
 
 macro_rules! exp{ ($val:expr, $e:pat => $res:expr) => (match $val { $e=>$res, _=>panic!("exp!")}) }
 
-impl ::core::cmp::Ord for Link {
+impl ::std::cmp::Ord for Link {
 	fn cmp(&self, x: &Link) -> ::std::cmp::Ordering { self.name.cmp(&x.name) }
 }
-impl ::core::cmp::PartialEq for Link {
+impl ::std::cmp::PartialEq for Link {
 	fn eq(&self, x: &Link) -> bool { self.name == x.name }
 }
-impl ::core::cmp::PartialOrd for Link {
+impl ::std::cmp::PartialOrd for Link {
 	fn partial_cmp(&self, x: &Link) -> Option<::std::cmp::Ordering> { Some(self.cmp(x)) }
 }
-impl ::core::cmp::Eq for Link
+impl ::std::cmp::Eq for Link
 {
 }
 impl Link
@@ -195,11 +195,11 @@ impl Link
 		return self.aliased;
 	}
 }
-impl ::std::fmt::Debug for ::core::cell::RefCell<::cct_mesh::Link>
+impl ::std::fmt::Debug for ::std::cell::RefCell<::cct_mesh::Link>
 {
 	fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
 		let link = self.borrow();
-		if link.name.as_slice() == "" {
+		if &*link.name == "" {
 			write!(f, "<anon>")
 		}
 		else {
@@ -270,12 +270,12 @@ impl Unit
 		return link;
 	}
 	pub fn make_anon_links(&mut self, count: uint) -> LinkList {
-		::std::iter::range(0, count).map(|_| self.make_anon_link()).collect()
+		(0 .. count).map(|_| self.make_anon_link()).collect()
 	}
 	
 	pub fn make_group(&mut self, name: &String, size: uint) {
 		let mut val = Vec::with_capacity(size);
-		for i in range(0,size) {
+		for i in (0 .. size) {
 			val.push( self.get_link(&format!("{}[{:2}]", name, i)) );
 		}
 		self.groups.insert(name.clone(), val);

@@ -75,7 +75,7 @@ impl<'a> Engine<'a>
 	}
 	
 	/// @param logical_and - If true, perform a logical AND on the values, else do an OR
-	pub fn are_set(&self, nodes: &Vec<::cct_mesh::flat::NodeRef>, logical_and: bool) -> bool
+	pub fn are_set(&self, nodes: &[::cct_mesh::flat::NodeRef], logical_and: bool) -> bool
 	{
 		for node in nodes.iter()
 		{
@@ -90,7 +90,7 @@ impl<'a> Engine<'a>
 		}
 		return logical_and;	// If no short-circuits happened, AND=true, OR=false
 	}
-	pub fn get_values(&self, nodes: &Vec<::cct_mesh::flat::NodeRef>) -> Vec<bool>
+	pub fn get_values(&self, nodes: &[::cct_mesh::flat::NodeRef]) -> Vec<bool>
 	{
 		let mut rv = Vec::with_capacity(nodes.len());
 		for i in nodes.iter() {
@@ -118,7 +118,7 @@ impl<'a> Engine<'a>
 			if self.are_set(&disp.condition, true)
 			{
 				debug!("Display '{}' with '{:?}'", disp.text, disp.values);
-				print_display(disp.text.as_slice(), &self.get_values(&disp.values));
+				print_display( &disp.text, &self.get_values(&disp.values) );
 				rv = true;
 			}
 		}
@@ -126,7 +126,7 @@ impl<'a> Engine<'a>
 	}
 }
 
-fn print_display(fmtstr: &str, vals: &Vec<bool>)
+fn print_display(fmtstr: &str, vals: &[bool])
 {
 	let mut idx = 0;
 	
@@ -168,7 +168,7 @@ fn print_display(fmtstr: &str, vals: &Vec<bool>)
 	if idx != vals.len()
 	{
 		print!(">> ");
-		for i in range(idx, vals.len()) {
+		for i in (idx .. vals.len()) {
 			print!("{}", match vals[i] {false=>0,true=>1});
 		}
 	}
@@ -176,10 +176,10 @@ fn print_display(fmtstr: &str, vals: &Vec<bool>)
 }
 
 /// Read an unsigned integer from a sequence of bools
-pub fn read_uint(inlines: &Vec<bool>, base: usize, count: u8) -> u64
+pub fn read_uint(inlines: &[bool], base: usize, count: u8) -> u64
 {
 	let mut val: u64 = 0;
-	for i in range(0,count as usize)
+	for i in (0 .. count as usize)
 	{
 		if inlines[base+i]
 		{

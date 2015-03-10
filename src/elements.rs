@@ -19,13 +19,14 @@ pub trait Element
 	fn name(&self) -> String;
 	fn get_outputs(&self, n_inputs: usize) -> usize;
 	fn dup(&self) -> Box<Element+'static>;
-	fn update(&mut self, outlines: &mut Vec<bool>, inlines: &Vec<bool>);
+	fn update(&mut self, outlines: &mut [bool], inlines: &[bool]);
 }
 
 type NewEleResult = Result<Box<Element+'static>,String>;
 
-fn write_uint(outlines: &mut Vec<bool>, base: usize, count: u8, val: u64) {
-	for i in range(0, count as usize)
+fn write_uint(outlines: &mut [bool], base: usize, count: u8, val: u64)
+{
+	for i in (0 .. count as usize)
 	{
 		if (val & 1u64 << i) != 0
 		{
@@ -38,9 +39,9 @@ macro_rules! get_or{
 	($vec:expr, $idx:expr, $def:expr) => ({let _i=$idx; let _v=$vec; (if _i < _v.len(){_v[_i]}else{$def})}) 
 }
 
-pub fn create(name: &String, params: &[u64], n_inputs: usize) -> NewEleResult
+pub fn create(name: &str, params: &[u64], n_inputs: usize) -> NewEleResult
 {
-	match name.as_slice()
+	match name
 	{
 	// Meta-gates
 	"DELAY" => ElementDELAY::new(params, n_inputs),
@@ -101,12 +102,12 @@ impl Element for ElementDELAY
 		(box self.clone()) as Box<Element>
 	}
 
-	fn update(&mut self, outlines: &mut Vec<bool>, inlines: &Vec<bool>)
+	fn update(&mut self, outlines: &mut [bool], inlines: &[bool])
 	{
 		assert!( inlines.len() == outlines.len() );
 		if self.count == 0
 		{
-			for i in range(0, inlines.len())
+			for i in (0 .. inlines.len())
 			{
 				outlines[i] |= inlines[i];
 			}
@@ -154,7 +155,7 @@ impl Element for ElementENABLE
 		box ElementENABLE as Box<Element>
 	}
 
-	fn update(&mut self, outlines: &mut Vec<bool>, inlines: &Vec<bool>)
+	fn update(&mut self, outlines: &mut [bool], inlines: &[bool])
 	{
 		if inlines[0]
 		{
@@ -202,7 +203,7 @@ impl Element for ElementPULSE
 		box self.clone() as Box<Element>
 	}
 
-	fn update(&mut self, outlines: &mut Vec<bool>, inlines: &Vec<bool>)
+	fn update(&mut self, outlines: &mut [bool], inlines: &[bool])
 	{
 		let curval = inlines[0];
 		
@@ -248,7 +249,7 @@ impl Element for ElementHOLD
 		box self.clone() as Box<Element>
 	}
 
-	fn update(&mut self, outlines: &mut Vec<bool>, inlines: &Vec<bool>)
+	fn update(&mut self, outlines: &mut [bool], inlines: &[bool])
 	{
 		for (i,line) in inlines.iter().enumerate()
 		{
@@ -297,22 +298,22 @@ impl Element for $name
 		box $name { bussize:self.bussize,buscount:self.buscount} as Box<Element>
 	}
 
-	fn update(&mut self, outlines: &mut Vec<bool>, inlines: &Vec<bool>)
+	fn update(&mut self, outlines: &mut [bool], inlines: &[bool])
 	{
 		let fixed_lines = inlines.len() - (self.bussize as usize)*(self.buscount as usize);
 		let mut val = $init;
-		for i in range(0, fixed_lines)
+		for i in (0 .. fixed_lines)
 		{
 			let inval = inlines[i];
 			val = $op(val,inval);
 		}
 		let baseval = val;
 		
-		for i in range(0, self.bussize as usize)
+		for i in (0 .. self.bussize as usize)
 		{
 			let ofs = fixed_lines + i;
 			val = baseval;
-			for j in range(0, self.buscount as usize)
+			for j in (0 .. self.buscount as usize)
 			{
 				let inval = inlines[ofs + j * (self.bussize as usize)];
 				val = $op(val, inval);
@@ -351,7 +352,7 @@ impl Element for ElementNOT
 		box ElementNOT as Box<Element>
 	}
 
-	fn update(&mut self, outlines: &mut Vec<bool>, inlines: &Vec<bool>)
+	fn update(&mut self, outlines: &mut [bool], inlines: &[bool])
 	{
 		for (i,line) in outlines.iter_mut().enumerate()
 		{
@@ -396,7 +397,7 @@ impl Element for ElementLATCH
 		(box self.clone()) as Box<Element>
 	}
 
-	fn update(&mut self, outlines: &mut Vec<bool>, inlines: &Vec<bool>)
+	fn update(&mut self, outlines: &mut [bool], inlines: &[bool])
 	{
 		let enable = inlines[0];
 		let reset = inlines[1];
@@ -468,14 +469,14 @@ impl Element for ElementMUX
 		box ElementMUX { bits:self.bits, bussize:self.bussize } as Box<Element>
 	}
 
-	fn update(&mut self, outlines: &mut Vec<bool>, inlines: &Vec<bool>)
+	fn update(&mut self, outlines: &mut [bool], inlines: &[bool])
 	{
 		let enable = inlines[0];
 		let index = read_uint(inlines, 1, self.bits) as usize;
 		let ofs = 1 + (self.bits as usize) + index * (self.bussize as usize);;
 		if enable
 		{
-			for i in range(0, self.bussize as usize)
+			for i in (0 .. self.bussize as usize)
 			{
 				outlines[i] |= inlines[ofs + i];
 			}
@@ -523,7 +524,7 @@ impl Element for ElementDEMUX
 		box ElementDEMUX { bits:self.bits } as Box<Element>
 	}
 
-	fn update(&mut self, outlines: &mut Vec<bool>, inlines: &Vec<bool>)
+	fn update(&mut self, outlines: &mut [bool], inlines: &[bool])
 	{
 		let enable = inlines[0];
 		let index = read_uint(inlines, 1, self.bits) as usize;
@@ -531,7 +532,7 @@ impl Element for ElementDEMUX
 		let bussize = inlines.len() - ofs;
 		if enable
 		{
-			for i in range(0,bussize)
+			for i in (0 .. bussize)
 			{
 				outlines[index*bussize + i] |= inlines[ofs+i];
 			}
@@ -574,7 +575,7 @@ impl Element for ElementSEQUENCER
 		box self.clone() as Box<Element>
 	}
 
-	fn update(&mut self, outlines: &mut Vec<bool>, inlines: &Vec<bool>)
+	fn update(&mut self, outlines: &mut [bool], inlines: &[bool])
 	{
 		let enable = inlines[0];
 		let reset  = inlines[1];
@@ -645,7 +646,7 @@ impl Element for ElementMEMORY_DRAM
 		box self.clone() as Box<Element>
 	}
 
-	fn update(&mut self, outlines: &mut Vec<bool>, inlines: &Vec<bool>)
+	fn update(&mut self, outlines: &mut [bool], inlines: &[bool])
 	{
 		if self.data.len() == 0 {
 			self.data = ::from_elem( 1 << self.addrbits * self.wordsize / 32, 0 );

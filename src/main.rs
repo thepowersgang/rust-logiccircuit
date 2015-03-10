@@ -2,12 +2,12 @@
 //
 //
 #![feature(box_syntax)]
+#![feature(io)]	// for new io
+#![feature(alloc)]	// Shut up about Weak
 #[macro_use] extern crate log;
 extern crate env_logger;
 
 extern crate getopts;
-extern crate collections;
-extern crate core;
 extern crate glob;
 
 // HACK!
