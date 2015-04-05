@@ -1,10 +1,15 @@
+//
+//
+
+type ExecLimit = u32;
+//type NodeIdx = usize;
 
 #[derive(Clone,Copy,Debug)]
 pub enum NodeRef
 {
 	NodeZero,
 	NodeOne,
-	NodeId(uint),
+	NodeId(u32),
 }
 
 /// Flattened mesh items
@@ -26,7 +31,7 @@ pub struct Node
 #[derive(Clone)]
 pub struct Mesh
 {
-	pub n_nodes: uint,
+	pub n_nodes: usize,
 	//pub nodes: Vec<Node>,	// Aka LinkValues
 	pub elements: Vec<ElementInst>,
 	pub inputs: Vec<NodeRef>,
@@ -39,7 +44,7 @@ pub struct Mesh
 pub struct Test
 {
 	unit: ::std::rc::Rc<Mesh>,
-	exec_limit:	uint,
+	exec_limit:	u32,
 	completion: Vec<NodeRef>,
 	assertions: Vec<TestAssert>,
 }
@@ -70,7 +75,7 @@ pub struct Breakpoint
 impl Mesh
 {
 	//pub fn new( nodes: Vec<Node>, elements: Vec<ElementInst>, inputs: &super::LinkList, outputs: &super::LinkList ) -> Mesh
-	pub fn new( n_nodes: uint, n_eles: uint, n_bps: uint, n_disp: uint, inputs: &super::LinkList, outputs: &super::LinkList ) -> Mesh
+	pub fn new( n_nodes: usize, n_eles: usize, n_bps: usize, n_disp: usize, inputs: &super::LinkList, outputs: &super::LinkList ) -> Mesh
 	{
 		Mesh {
 			n_nodes: n_nodes,
@@ -121,7 +126,7 @@ impl Mesh
 
 impl Test
 {
-	pub fn new(flat: ::std::rc::Rc<Mesh>, exec_limit: uint, completion: Vec<NodeRef>, assertions: Vec<TestAssert>) -> Test {
+	pub fn new(flat: ::std::rc::Rc<Mesh>, exec_limit: u32, completion: Vec<NodeRef>, assertions: Vec<TestAssert>) -> Test {
 		Test {
 			exec_limit: exec_limit,
 			unit: flat,
@@ -130,7 +135,7 @@ impl Test
 			}
 	}
 	
-	pub fn exec_limit(&self) -> uint { self.exec_limit }
+	pub fn exec_limit(&self) -> u32 { self.exec_limit }
 	pub fn get_mesh(&self) -> &Mesh { &*(self.unit) }
 	pub fn get_completion(&self) -> &Vec<NodeRef> { &self.completion }
 	pub fn iter_asserts(&self) -> ::std::slice::Iter<::cct_mesh::flat::TestAssert>
@@ -183,7 +188,7 @@ pub fn linklist_to_noderefs(links: &super::LinkList) -> Vec<NodeRef>
 		let nr = match &*linkref.name {
 			"=0" => NodeRef::NodeZero,
 			"=1" => NodeRef::NodeOne,
-			_ => NodeRef::NodeId( link.borrow().get_alias().unwrap() ),
+			_ => NodeRef::NodeId( *link.borrow().get_alias().unwrap() ),
 			};
 		rv.push( nr );
 	}
@@ -198,14 +203,14 @@ fn noderefs_aliased(innodes: &Vec<NodeRef>, aliases: &Vec<Option<NodeRef>>) -> V
 		let nr = match *node
 			{
 			NodeRef::NodeId(id) => {
-				if id >= aliases.len() {
+				if id as usize >= aliases.len() {
 					panic!("BUG - Node {} (idx {}) not in aliases table (only {} entries)",
 						id, i, aliases.len());
 				}
-				if aliases[id].is_none() {
-					panic!("BUG - Node {} (idx {}) was not aliased", id, i);
-				}
-				aliases[id].unwrap()
+				
+				aliases[id as usize].unwrap_or_else(
+					|| panic!("BUG - Node {} (idx {}) was not aliased", id, i)
+					)
 				},
 			lit @ _ => lit,
 			};

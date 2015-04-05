@@ -22,7 +22,7 @@ pub trait Element
 	fn update(&mut self, outlines: &mut [bool], inlines: &[bool]);
 }
 
-type NewEleResult = Result<Box<Element+'static>,String>;
+pub type NewEleResult = Result<Box<Element+'static>,String>;
 
 fn write_uint(outlines: &mut [bool], base: usize, count: u8, val: u64)
 {

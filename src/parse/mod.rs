@@ -4,7 +4,7 @@
 use std::default::Default;
 use parse::lex::*;
 use parse::lex::Token::*;
-//use std::io::ReadExt;
+use std::io::Read;
 
 mod lex;
 
@@ -141,8 +141,8 @@ impl<'rl> Parser<'rl>
 				self.get_token();
 				loop
 				{
-					let start = self.get_numeric();
-					if start >= group.len() as u64 {
+					let start = self.get_numeric() as usize;
+					if start >= group.len() {
 						panic!("Index {} out of range for group @{}", start, name);
 					}
 					if self.look_ahead() != TokColon
@@ -155,8 +155,8 @@ impl<'rl> Parser<'rl>
 					{
 						// Range
 						self.get_token();
-						let end = self.get_numeric();
-						if end >= group.len() as u64 {
+						let end = self.get_numeric() as usize;
+						if end >= group.len() {
 							syntax_error!(self.lexer, "Range end {} out of range for group @{} (len={})",
 								end, name, group.len());
 						}
@@ -348,14 +348,30 @@ impl<'rl> Parser<'rl>
 	}
 }
 
-fn range_inc<T: ::std::num::Int>(first: T, last: T) -> ::std::iter::RangeStep<T> {
-	if first <= last {
-		return ::std::iter::range_step(first, last+1, 1);
+struct RangeInc(pub usize, pub usize);
+
+impl ::std::iter::Iterator for RangeInc
+{
+	type Item = usize;
+	fn next(&mut self) -> Option<usize> {
+		if self.0 == self.1 {
+			None
+		}
+		else if self.0 < self.1 {
+			let rv = self.0;
+			self.0 = self.0 + 1;
+			Some(rv)
+		}
+		else {
+			let rv = self.0;
+			self.0 = self.0 - 1;
+			Some(rv)
+		}
 	}
-	else {
-		debug!("range_step({}, {}, {})", first, last-1, -1);
-		return ::std::iter::range_step(first, last-1, -1);
-	}
+}
+
+fn range_inc(first: usize, last: usize) -> RangeInc {
+	RangeInc(first, last)
 }
 
 /// @brief Wraps 'curunit' as a reassignable reference

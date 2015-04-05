@@ -18,9 +18,12 @@ pub mod flat;
 macro_rules! chain{ ($base:expr, $($next:expr),+) => ( $base $(.chain($next) )+ ) }
 macro_rules! zip  { ($base:expr, $($next:expr),+) => ( $base $(.zip($next) )+ ) }
 
-#[derive(Debug)]
+#[derive(Copy,Clone,Debug,PartialEq,PartialOrd)]
 struct LinkIdx(u32);
-#[derive(Default)]
+impl From<usize> for LinkIdx { fn from(v: usize) -> Self { LinkIdx(v as u32) } }
+impl From<u32> for LinkIdx { fn from(v: u32) -> Self { LinkIdx(v) } }
+impl ::std::ops::Deref for LinkIdx { type Target = u32; fn deref(&self) -> &u32 { &self.0 } }
+#[derive(Default,Debug)]
 struct Link
 {
 	name: String,
@@ -147,7 +150,7 @@ impl Link
 	}
 	pub fn tag(&mut self, value: LinkIdx) -> bool {
 		if self.aliased != None {
-			panic!("Link '{}' already aliased to #{}", self.name, self.aliased.unwrap());
+			panic!("Link '{}' already aliased to #{:?}", self.name, self.aliased.as_ref().unwrap());
 		}
 		assert!( self.aliased == None );
 		match self.reflink {
@@ -157,7 +160,7 @@ impl Link
 			false
 			},
 		None => {
-			debug!("Tagging '{}' to {}", self.name, value);
+			debug!("Tagging '{}' to {:?}", self.name, value);
 			self.aliased = Some(value);
 			true
 			}
@@ -197,18 +200,18 @@ impl Link
 		return self.aliased;
 	}
 }
-impl ::std::fmt::Debug for ::std::cell::RefCell<::cct_mesh::Link>
-{
-	fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-		let link = self.borrow();
-		if &*link.name == "" {
-			write!(f, "<anon>")
-		}
-		else {
-			write!(f, "{}", self.borrow().name)
-		}
-	}
-}
+//impl ::std::fmt::Debug for ::std::cell::RefCell<::cct_mesh::Link>
+//{
+//	fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+//		let link = self.borrow();
+//		if &*link.name == "" {
+//			write!(f, "<anon>")
+//		}
+//		else {
+//			write!(f, "{}", self.borrow().name)
+//		}
+//	}
+//}
 
 impl Default for Unit
 {
@@ -368,7 +371,7 @@ impl Unit
 		let subunits = self.flatten_subunits(pre_flattened);
 		
 		let mut n_eles = 0;
-		let mut n_links = 0;
+		let mut n_links: usize = 0;
 		
 		n_eles += self.elements.len();
 		
@@ -377,7 +380,7 @@ impl Unit
 		// - Tag (and count) all links that arent not referencing another link
 		for link in chain!( self.anon_links.iter(), self.links.values() )
 		{
-			if link.borrow_mut().tag(n_links) { n_links += 1; }
+			if link.borrow_mut().tag(From::from(n_links)) { n_links += 1; }
 		}
 		// - And once all non-reference links are tagged, copy those tags to the reference links
 		for link in chain!( self.anon_links.iter(), self.links.values() )
@@ -462,12 +465,12 @@ impl Unit
 		}
 		
 		// Populate from sub-units
-		let mut bind_node_idx = n_local_links;
+		let mut bind_node_idx = n_local_links as u32;
 		for (i,subu) in self.subunits.iter().enumerate()
 		{
 			bind_node_idx += self.flatten_merge_subunit(&mut ret, &*subunits[i], subu, bind_node_idx);
 		}
-		assert!(bind_node_idx == n_links);
+		assert!(bind_node_idx as usize == n_links);
 		assert!(ret.elements.len() == n_eles);
 		
 		info!("'{}' flattened: {} nodes, {} elements", self.name, n_links, n_eles);
@@ -496,12 +499,12 @@ impl Unit
 		for (j,noderef) in flattened.inputs.iter().enumerate()
 		{
 			let inner_node = exp!(*noderef, NodeId(id) => id);
-			aliases[inner_node] = Some(inputs[j]);
+			aliases[inner_node as usize] = Some(inputs[j]);
 		}
 		for (j,noderef) in flattened.outputs.iter().enumerate()
 		{
 			let inner_node = exp!(*noderef,   NodeId(id) => id);
-			aliases[inner_node] = Some(outputs[j]);
+			aliases[inner_node as usize] = Some(outputs[j]);
 		}
 		
 		// Count (and alias) all nodes that were not external links
@@ -679,17 +682,17 @@ impl Root
 	}
 }
 
-fn flatten_unit(units: &mut HashMap<String,Unit>, flat_units: &mut Flatmap, name: &String)
+fn flatten_unit(units: &mut HashMap<String,Unit>, flat_units: &mut Flatmap, name: &str)
 {
 	if flat_units.get(name).is_none()
 	{
-		for su_name in units[*name].get_subunits().iter()
+		for su_name in units[name].get_subunits().iter()
 		{
 			flatten_unit(units, flat_units, su_name);
 		}
 		let unit = units.get_mut(name).unwrap();
 		let flat = unit.flatten(&*flat_units);
-		flat_units.insert( name.clone(), flat );
+		flat_units.insert( From::from(name), flat );
 	}
 }
 

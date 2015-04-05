@@ -2,6 +2,8 @@
 //
 //
 
+use cct_mesh::flat::NodeRef;
+
 struct Ele
 {
 	inst: ::cct_mesh::flat::ElementInst,
@@ -17,11 +19,11 @@ pub struct Engine<'a>
 	newstate: Vec<bool>,
 }
 
-macro_rules! getval{ ($state:expr, $nr:expr) => ( {use cct_mesh::flat::NodeRef;
+macro_rules! getval{ ($state:expr, $nr:expr) => ( {
 	match $nr {
 	NodeRef::NodeOne => true,
 	NodeRef::NodeZero => false,
-	NodeRef::NodeId(id) => $state[id],
+	NodeRef::NodeId(id) => $state[id as usize],
 	}})
 }
 
@@ -62,8 +64,8 @@ impl<'a> Engine<'a>
 				debug!("{:?} = {:?}", line, val);
 				match *line
 				{
-				::cct_mesh::flat::NodeRef::NodeId(id) => {
-					self.newstate[id] |= *val
+				NodeRef::NodeId(id) => {
+					self.newstate[id as usize] |= *val
 					},
 				_ => {
 					},
@@ -75,7 +77,7 @@ impl<'a> Engine<'a>
 	}
 	
 	/// @param logical_and - If true, perform a logical AND on the values, else do an OR
-	pub fn are_set(&self, nodes: &[::cct_mesh::flat::NodeRef], logical_and: bool) -> bool
+	pub fn are_set(&self, nodes: &[NodeRef], logical_and: bool) -> bool
 	{
 		for node in nodes.iter()
 		{

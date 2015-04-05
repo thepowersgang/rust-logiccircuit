@@ -22,9 +22,9 @@ mod simulator;
 
 enum TestStatus
 {
-	Pass(usize),
-	Fail(usize, String),
-	Timeout(usize),
+	Pass(u32),
+	Fail(u32, String),
+	Timeout(u32),
 }
 
 fn main()
@@ -38,8 +38,8 @@ fn main()
 	opts.optflag("", "test-display", "Print display items during tests");
 
 	println!("> opts = ");
-	let args_s = ::std::os::args();
-	let args = match opts.parse(args_s.tail())
+	let args_s: Vec<_> = ::std::env::args().collect();
+	let args = match opts.parse(&args_s[1..])
 		{
 		Ok(m) => m,
 		Err(f) => panic!(f.to_string()),
@@ -71,7 +71,7 @@ fn main()
 		// Run circuit unit tests
 		
 		let show_display = args.opt_present("test-display");
-		let test_glob = args.opt_str("test-glob").unwrap_or( String::from_str("*") );
+		let test_glob = args.opt_str("test-glob").unwrap_or( From::from("*") );
 		let pat = ::glob::Pattern::new(&*test_glob).unwrap();
 
 		// Only flatten tests if required
