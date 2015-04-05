@@ -111,7 +111,7 @@ impl<'rl> Lexer<'rl>
 			saved_tok: None,
 		}
 	}
-	pub fn curline(&self) -> uint { self.line as uint }
+	pub fn curline(&self) -> u32 { self.line }
 	
 	fn _getc(&mut self) -> Option<char>
 	{

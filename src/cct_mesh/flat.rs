@@ -46,7 +46,7 @@ pub struct Test
 
 pub struct TestAssert
 {
-	pub line: uint,
+	pub line: u32,
 	pub conditions: Vec<NodeRef>,
 	pub values: Vec<NodeRef>,
 	pub expected: Vec<NodeRef>,
@@ -141,7 +141,7 @@ impl Test
 
 impl TestAssert
 {
-	pub fn new(line: uint, conds: Vec<NodeRef>, have: Vec<NodeRef>, exp: Vec<NodeRef>) -> TestAssert {
+	pub fn new(line: u32, conds: Vec<NodeRef>, have: Vec<NodeRef>, exp: Vec<NodeRef>) -> TestAssert {
 		TestAssert {
 			line: line,
 			conditions: conds,

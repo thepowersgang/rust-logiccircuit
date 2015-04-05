@@ -4,7 +4,7 @@
 use std::default::Default;
 use parse::lex::*;
 use parse::lex::Token::*;
-use std::io::ReadExt;
+//use std::io::ReadExt;
 
 mod lex;
 
@@ -148,7 +148,7 @@ impl<'rl> Parser<'rl>
 					if self.look_ahead() != TokColon
 					{
 						// Single
-						values.push( group[start as uint].clone() );
+						values.push( group[start as usize].clone() );
 						debug!("Group single {} #{}", name, start);
 					}
 					else
@@ -160,9 +160,9 @@ impl<'rl> Parser<'rl>
 							syntax_error!(self.lexer, "Range end {} out of range for group @{} (len={})",
 								end, name, group.len());
 						}
-						for i in range_inc(start as int, end as int) {
+						for i in range_inc(start, end) {
 							debug!("Group item @{}[{}]", name, i);
-							values.push( group[i as uint].clone() );
+							values.push( group[i as usize].clone() );
 						}
 					}
 					let tok = self.get_token();
@@ -182,20 +182,20 @@ impl<'rl> Parser<'rl>
 			}
 			},
 		TokNumber(val) => {
-			let mut start = 0u;
-			let mut end = 0u;
+			let mut start = 0;
+			let mut end = 0;
 			if self.look_ahead() == TokSqOpen {
 				// Extract a range of bits from the number
 				self.get_token();
-				start = self.get_numeric() as uint;
+				start = self.get_numeric() as usize;
 				syntax_assert_get!(self, TokColon => (), "Expected TokColon in literal");
-				end = self.get_numeric() as uint;
+				end = self.get_numeric() as usize;
 				syntax_assert_get!(self, TokSqClose => (), "Expected TokSqClose after literal range");
 			}
 			
 			let count = if self.look_ahead() == TokStar {
 				self.get_token();
-				self.get_numeric() as uint
+				self.get_numeric() as usize
 				}
 				else { 1 };
 			
@@ -209,8 +209,8 @@ impl<'rl> Parser<'rl>
 			
 			debug!("get_value: Constant {}[{}:{}] * {}", val, start, end, count);
 			for _ in (0 .. count) {
-				for i in range_inc(start as int, end as int) {
-					values.push( unit.get_constant( (val >> i as uint) & 1 == 1 ) );
+				for i in range_inc(start, end) {
+					values.push( unit.get_constant( (val >> i as usize) & 1 == 1 ) );
 				}
 			}
 			
@@ -245,7 +245,7 @@ impl<'rl> Parser<'rl>
 				let size = self.get_numeric();
 				syntax_assert_get!(self, TokSqClose => (), "Expected TokSqClose after group in connection list");
 				
-				unit.make_group(&name, size as uint);
+				unit.make_group(&name, size as usize);
 				for line in unit.get_group(&name).unwrap().iter() {
 					ret.push( line.clone() );
 				}
@@ -348,12 +348,12 @@ impl<'rl> Parser<'rl>
 	}
 }
 
-fn range_inc(first: int, last: int) -> ::std::iter::RangeStep<int> {
+fn range_inc<T: ::std::num::Int>(first: T, last: T) -> ::std::iter::RangeStep<T> {
 	if first <= last {
 		return ::std::iter::range_step(first, last+1, 1);
 	}
 	else {
-		debug!("range_step({}, {}, {})", first, last-1, -1i);
+		debug!("range_step({}, {}, {})", first, last-1, -1);
 		return ::std::iter::range_step(first, last-1, -1);
 	}
 }
@@ -429,10 +429,10 @@ fn handle_meta(parser: &mut Parser, meshroot: &mut ::cct_mesh::Root, state: &mut
 		},
 	"array" => {
 		let name = syntax_assert_get!(parser, TokIdent(x) => x, "Expected group name after #array");
-		let size = parser.get_numeric() as uint;
+		let size = parser.get_numeric() as usize;
 		syntax_assert_get!(parser, TokNewline => (), "Expected newline after group definition");
 		
-		state.get_curunit().make_group(&name, size as uint);
+		state.get_curunit().make_group(&name, size);
 		},
 	"endunit" => {
 		syntax_assert_get!(parser, TokNewline => (), "Expected newline after #endunit");
@@ -448,7 +448,7 @@ fn handle_meta(parser: &mut Parser, meshroot: &mut ::cct_mesh::Root, state: &mut
 		//	syntax_error!(parser.lexer, "#testcase outside of root");
 		//}
 		
-		match meshroot.add_test(&name, limit as uint) {
+		match meshroot.add_test(&name, limit as u32) {
 			Some(x) => state.set_curtest( x ),
 			None => panic!("Redefinition of test \"{}\"", name)
 			};

@@ -18,12 +18,14 @@ pub mod flat;
 macro_rules! chain{ ($base:expr, $($next:expr),+) => ( $base $(.chain($next) )+ ) }
 macro_rules! zip  { ($base:expr, $($next:expr),+) => ( $base $(.zip($next) )+ ) }
 
+#[derive(Debug)]
+struct LinkIdx(u32);
 #[derive(Default)]
 struct Link
 {
 	name: String,
 	reflink: Option<LinkWRef>,
-	aliased: Option<uint>,	// Used during node counting
+	aliased: Option<LinkIdx>,	// Used during node counting
 }
 
 pub type LinkRef = Rc<RefCell<Link>>;
@@ -90,7 +92,7 @@ pub struct Unit
 
 struct TestAssert
 {
-	line: uint,
+	line: u32,
 	conditions: LinkList,
 	values: LinkList,
 	expected: LinkList,
@@ -99,7 +101,7 @@ struct TestAssert
 #[derive(Default)]
 pub struct Test
 {
-	exec_limit: uint,
+	exec_limit: u32,
 	completion: LinkList,
 	unit: Unit,
 	assertions: LinkedList<TestAssert>,
@@ -143,7 +145,7 @@ impl Link
 		self.reflink = Some(other.downgrade());
 		//debug!("Bound link {} to {}'s value", self.name, other.name);
 	}
-	pub fn tag(&mut self, value: uint) -> bool {
+	pub fn tag(&mut self, value: LinkIdx) -> bool {
 		if self.aliased != None {
 			panic!("Link '{}' already aliased to #{}", self.name, self.aliased.unwrap());
 		}
@@ -191,7 +193,7 @@ impl Link
 			}
 		}
 	}
-	pub fn get_alias(&self) -> Option<uint> {
+	pub fn get_alias(&self) -> Option<LinkIdx> {
 		return self.aliased;
 	}
 }
@@ -269,11 +271,11 @@ impl Unit
 		self.anon_links.push_back( link.clone() );
 		return link;
 	}
-	pub fn make_anon_links(&mut self, count: uint) -> LinkList {
+	pub fn make_anon_links(&mut self, count: usize) -> LinkList {
 		(0 .. count).map(|_| self.make_anon_link()).collect()
 	}
 	
-	pub fn make_group(&mut self, name: &String, size: uint) {
+	pub fn make_group(&mut self, name: &String, size: usize) {
 		let mut val = Vec::with_capacity(size);
 		for i in (0 .. size) {
 			val.push( self.get_link(&format!("{}[{:2}]", name, i)) );
@@ -365,8 +367,8 @@ impl Unit
 		debug!("Flattening unit '{}'", self.name);
 		let subunits = self.flatten_subunits(pre_flattened);
 		
-		let mut n_eles = 0u;
-		let mut n_links = 0u;
+		let mut n_eles = 0;
+		let mut n_links = 0;
 		
 		n_eles += self.elements.len();
 		
@@ -480,7 +482,7 @@ impl Unit
 	/// @param subu 	- Subunit reference (used for outside node IDs)
 	/// @param bind_node_idx	- ID to use for the next internal node
 	/// @return Number of internal noes
-	fn flatten_merge_subunit(&self, mesh: &mut flat::Mesh, flattened: &flat::Mesh, subu: &UnitRef, bind_node_idx: uint) -> uint
+	fn flatten_merge_subunit(&self, mesh: &mut flat::Mesh, flattened: &flat::Mesh, subu: &UnitRef, bind_node_idx: u32) -> u32
 	{
 		let inputs = flat::linklist_to_noderefs( &subu.inputs );
 		let outputs = flat::linklist_to_noderefs( &subu.outputs );
@@ -503,7 +505,7 @@ impl Unit
 		}
 		
 		// Count (and alias) all nodes that were not external links
-		let mut unbound_nodes = 0u;
+		let mut unbound_nodes = 0;
 		for (_j,alias) in aliases.iter_mut().enumerate()
 		{
 			if alias.is_none()
@@ -563,7 +565,7 @@ impl Unit
 
 impl Test
 {
-	pub fn new(name: &String, exec_limit: uint) -> Test {
+	pub fn new(name: &String, exec_limit: u32) -> Test {
 		Test {
 			unit: Unit::new( &format!("!TEST:{}",name)),
 			exec_limit: exec_limit,
@@ -583,7 +585,7 @@ impl Test
 			return false;
 		}
 	}
-	pub fn add_assert(&mut self, line: uint, conds: LinkList, vals: LinkList, exp: LinkList) {
+	pub fn add_assert(&mut self, line: u32, conds: LinkList, vals: LinkList, exp: LinkList) {
 		self.assertions.push_back(TestAssert{
 			line: line,
 			conditions: conds,
@@ -632,7 +634,7 @@ impl Root
 	pub fn get_unit(&self, name: &String) -> Option<&Unit> {
 		return self.units.get(name);
 	}
-	pub fn add_test(&mut self, name: &String, exec_limit: uint) -> Option<&mut Test> {
+	pub fn add_test(&mut self, name: &String, exec_limit: u32) -> Option<&mut Test> {
 		match self.tests.get_mut(name)
 		{
 		Some(_) => return None,

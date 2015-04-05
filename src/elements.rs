@@ -401,7 +401,7 @@ impl Element for ElementLATCH
 	{
 		let enable = inlines[0];
 		let reset = inlines[1];
-		let in_ofs = 2u;
+		let in_ofs = 2;
 		
 		if enable
 		{
