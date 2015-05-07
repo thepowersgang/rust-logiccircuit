@@ -80,12 +80,11 @@ impl ElementDELAY
 	pub fn new(params: &[u64], n_inputs: usize) -> NewEleResult
 	{
 		let count = get_or!(params, 0, 1u64) as usize - 1;
-		Ok( box ElementDELAY {
+		Ok( Box::new(ElementDELAY {
 			count: count,
 			idx: 0,
 			vals: ::from_elem(count*n_inputs, false),
-			} as Box<Element>
-			)
+			} ) )
 	}
 }
 impl Element for ElementDELAY
@@ -99,7 +98,7 @@ impl Element for ElementDELAY
 	}
 	
 	fn dup(&self) -> Box<Element+'static> {
-		(box self.clone()) as Box<Element>
+		Box::new(self.clone()) as Box<Element>
 	}
 
 	fn update(&mut self, outlines: &mut [bool], inlines: &[bool])
@@ -139,7 +138,7 @@ impl ElementENABLE
 			return Err(format!("Incorrect input count, expected at least two"));
 		}
 		
-		return Ok( box ElementENABLE as Box<Element> );
+		return Ok( Box::new(ElementENABLE) as Box<Element> );
 	}
 }
 impl Element for ElementENABLE
@@ -152,7 +151,7 @@ impl Element for ElementENABLE
 	}
 	
 	fn dup(&self) -> Box<Element+'static> {
-		box ElementENABLE as Box<Element>
+		Box::new(ElementENABLE) as Box<Element>
 	}
 
 	fn update(&mut self, outlines: &mut [bool], inlines: &[bool])
@@ -187,7 +186,7 @@ impl ElementPULSE
 			return Err(format!("Incorrect input count, expected one"));
 		}
 		
-		return Ok( box ElementPULSE { dir_is_falling: dir, last_value: false } as Box<Element> );
+		return Ok( Box::new(ElementPULSE { dir_is_falling: dir, last_value: false }) as Box<Element> );
 	}
 }
 impl Element for ElementPULSE
@@ -200,7 +199,7 @@ impl Element for ElementPULSE
 	}
 	
 	fn dup(&self) -> Box<Element+'static> {
-		box self.clone() as Box<Element>
+		Box::new(self.clone()) as Box<Element>
 	}
 
 	fn update(&mut self, outlines: &mut [bool], inlines: &[bool])
@@ -233,7 +232,7 @@ impl ElementHOLD
 			_ => return Err(format!("Too many parameters, expected only one")),
 			};
 		
-		return Ok( box ElementHOLD { hold_time: time, times: ::from_elem(n_inputs, 0) } as Box<Element> );
+		return Ok( Box::new(ElementHOLD { hold_time: time, times: ::from_elem(n_inputs, 0) }) as Box<Element> );
 	}
 }
 impl Element for ElementHOLD
@@ -246,7 +245,7 @@ impl Element for ElementHOLD
 	}
 	
 	fn dup(&self) -> Box<Element+'static> {
-		box self.clone() as Box<Element>
+		Box::new(self.clone()) as Box<Element>
 	}
 
 	fn update(&mut self, outlines: &mut [bool], inlines: &[bool])
@@ -265,6 +264,7 @@ impl Element for ElementHOLD
 }
 
 macro_rules! def_logic{ ($name:ident, $init:expr, $op:expr, $finish:expr) => (
+#[derive(Clone)]
 struct $name
 {
 	bussize: u8,
@@ -281,7 +281,7 @@ impl $name
 			Err( format!("Too few inputs, need at least {}, got {}", min_inputs, n_inputs) )
 		}
 		else {
-			Ok( box $name { bussize: bussize, buscount: buscount } as Box<Element> )
+			Ok( Box::new($name { bussize: bussize, buscount: buscount }) as Box<Element> )
 		}
 	}
 }
@@ -295,7 +295,7 @@ impl Element for $name
 	}
 	
 	fn dup(&self) -> Box<Element+'static> {
-		box $name { bussize:self.bussize,buscount:self.buscount} as Box<Element>
+		Box::new(self.clone()) as Box<Element>
 	}
 
 	fn update(&mut self, outlines: &mut [bool], inlines: &[bool])
@@ -336,7 +336,7 @@ impl ElementNOT
 {
 	fn new(_/*params*/: &[u64], _/*n_inputs*/: usize) -> NewEleResult
 	{
-		return Ok( box ElementNOT as Box<Element> );
+		return Ok( Box::new(ElementNOT) as Box<Element> );
 	}
 }
 impl Element for ElementNOT
@@ -349,7 +349,7 @@ impl Element for ElementNOT
 	}
 	
 	fn dup(&self) -> Box<Element+'static> {
-		box ElementNOT as Box<Element>
+		Box::new(ElementNOT) as Box<Element>
 	}
 
 	fn update(&mut self, outlines: &mut [bool], inlines: &[bool])
@@ -381,7 +381,7 @@ impl ElementLATCH
 		if n_inputs != 2 + size {
 			return Err( format!("Invalid input count, expected {}, got {}", n_inputs, 2+size) );
 		}
-		Ok( box ElementLATCH { vals: ::from_elem(size, false), ..Default::default() } as Box<Element> )
+		Ok( Box::new(ElementLATCH { vals: ::from_elem(size, false), ..Default::default() }) as Box<Element> )
 	}
 }
 impl Element for ElementLATCH
@@ -394,7 +394,7 @@ impl Element for ElementLATCH
 	}
 	
 	fn dup(&self) -> Box<Element+'static> {
-		(box self.clone()) as Box<Element>
+		Box::new(self.clone()) as Box<Element>
 	}
 
 	fn update(&mut self, outlines: &mut [bool], inlines: &[bool])
@@ -428,6 +428,8 @@ impl Element for ElementLATCH
 		}
 	}
 }
+
+#[derive(Clone)]
 struct ElementMUX
 {
 	bits: u8,
@@ -453,7 +455,7 @@ impl ElementMUX
 			return Err(format!("Incorrect input count, expected {}, got {}", exp_inputs, n_inputs));
 		}
 		
-		return Ok( box ElementMUX{bits: bits, bussize: bussize} as Box<Element> );
+		return Ok( Box::new(ElementMUX{bits: bits, bussize: bussize}) as Box<Element> );
 	}
 }
 impl Element for ElementMUX
@@ -466,7 +468,7 @@ impl Element for ElementMUX
 	}
 	
 	fn dup(&self) -> Box<Element+'static> {
-		box ElementMUX { bits:self.bits, bussize:self.bussize } as Box<Element>
+		Box::new(self.clone()) as Box<Element>
 	}
 
 	fn update(&mut self, outlines: &mut [bool], inlines: &[bool])
@@ -484,6 +486,7 @@ impl Element for ElementMUX
 	}
 }
 
+#[derive(Clone)]
 struct ElementDEMUX
 {
 	bits: u8
@@ -507,7 +510,7 @@ impl ElementDEMUX
 			return Err(format!("Incorrect input count, expected {}, got {}", exp_inputs, n_inputs));
 		}
 		
-		return Ok( box ElementDEMUX{bits: bits} as Box<Element> );
+		return Ok( Box::new(ElementDEMUX{bits: bits}) as Box<Element> );
 	}
 }
 impl Element for ElementDEMUX
@@ -521,7 +524,7 @@ impl Element for ElementDEMUX
 	}
 	
 	fn dup(&self) -> Box<Element+'static> {
-		box ElementDEMUX { bits:self.bits } as Box<Element>
+		Box::new(self.clone()) as Box<Element>
 	}
 
 	fn update(&mut self, outlines: &mut [bool], inlines: &[bool])
@@ -559,7 +562,7 @@ impl ElementSEQUENCER
 			return Err(format!("Incorrect input count, expected {}, got {}", exp_inputs, n_inputs));
 		}
 		
-		return Ok( box ElementSEQUENCER { count: count, position: 0 } as Box<Element> );
+		return Ok( Box::new(ElementSEQUENCER { count: count, position: 0 }) as Box<Element> );
 	}
 }
 impl Element for ElementSEQUENCER
@@ -572,7 +575,7 @@ impl Element for ElementSEQUENCER
 	}
 	
 	fn dup(&self) -> Box<Element+'static> {
-		box self.clone() as Box<Element>
+		Box::new(self.clone()) as Box<Element>
 	}
 
 	fn update(&mut self, outlines: &mut [bool], inlines: &[bool])
@@ -630,7 +633,7 @@ impl ElementMEMORY_DRAM
 			return Err(format!("Incorrect input count, expected {}, got {}", exp_inputs, n_inputs));
 		}
 		
-		return Ok( box ElementMEMORY_DRAM {wordsize: wordsize, addrbits: addrbits, ..Default::default()} as Box<Element> );
+		return Ok( Box::new(ElementMEMORY_DRAM {wordsize: wordsize, addrbits: addrbits, ..Default::default()}) as Box<Element> );
 	}
 }
 impl Element for ElementMEMORY_DRAM
@@ -643,7 +646,7 @@ impl Element for ElementMEMORY_DRAM
 	}
 	
 	fn dup(&self) -> Box<Element+'static> {
-		box self.clone() as Box<Element>
+		Box::new(self.clone()) as Box<Element>
 	}
 
 	fn update(&mut self, outlines: &mut [bool], inlines: &[bool])
