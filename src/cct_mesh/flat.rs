@@ -74,14 +74,16 @@ pub struct Breakpoint
 
 impl Mesh
 {
-	//pub fn new( nodes: Vec<Node>, elements: Vec<ElementInst>, inputs: &super::LinkList, outputs: &super::LinkList ) -> Mesh
-	pub fn new( n_nodes: usize, n_eles: usize, n_bps: usize, n_disp: usize, inputs: &super::LinkList, outputs: &super::LinkList ) -> Mesh
+	pub fn new(
+		n_nodes: usize, n_eles: usize, n_bps: usize, n_disp: usize,
+		unit: &super::Unit, inputs: &super::LinkList, outputs: &super::LinkList
+		) -> Mesh
 	{
 		Mesh {
 			n_nodes: n_nodes,
 			elements: Vec::with_capacity(n_eles),
-			inputs:  linklist_to_noderefs(inputs),
-			outputs: linklist_to_noderefs(outputs),
+			inputs:  linklist_to_noderefs(unit, inputs),
+			outputs: linklist_to_noderefs(unit, outputs),
 			
 			breakpoints: Vec::with_capacity(n_bps),
 			dispitems: Vec::with_capacity(n_disp),
@@ -178,21 +180,18 @@ impl Breakpoint
 }
 
 /// @brief Convert a LinkList into node references
-pub fn linklist_to_noderefs(links: &super::LinkList) -> Vec<NodeRef>
+pub fn linklist_to_noderefs(unit: &super::Unit, links: &super::LinkList) -> Vec<NodeRef>
 {
-	let mut rv = Vec::with_capacity(links.len());
-	for link in links.iter()
-	{
-		let linkref = link.borrow();
-		//debug!("Link '{}'", linkref.name);
-		let nr = match &*linkref.name {
+	links.iter().map(|link|
+		{
+		let linkref = unit.get_link_ref(link);
+		match &*linkref.name {
 			"=0" => NodeRef::NodeZero,
 			"=1" => NodeRef::NodeOne,
-			_ => NodeRef::NodeId( *link.borrow().get_alias().unwrap() ),
-			};
-		rv.push( nr );
-	}
-	return rv;
+			_ => NodeRef::NodeId( *linkref.get_alias().unwrap() ),
+			}
+		})
+		.collect()
 }
 
 fn noderefs_aliased(innodes: &Vec<NodeRef>, aliases: &Vec<Option<NodeRef>>) -> Vec<NodeRef>

@@ -128,7 +128,9 @@ impl<'rl> Parser<'rl>
 				};
 			debug!("get_value: Line '{}' * {}", name, count);
 			for _ in (0 .. count) {
-				values.push( unit.get_link(&name) );
+				let v = unit.get_link(&name);
+				trace!("- {:?}", v);
+				values.push( v );
 			}
 			},
 		TokGroup(name) => {
@@ -160,9 +162,9 @@ impl<'rl> Parser<'rl>
 							syntax_error!(self.lexer, "Range end {} out of range for group @{} (len={})",
 								end, name, group.len());
 						}
-						for i in range_inc(start, end) {
-							debug!("Group item @{}[{}]", name, i);
-							values.push( group[i as usize].clone() );
+						for i in range_inc(start as usize, end as usize) {
+							debug!("Group item @{}[{}] = {:?}", name, i, group[i]);
+							values.push( group[i].clone() );
 						}
 					}
 					let tok = self.get_token();
@@ -210,7 +212,9 @@ impl<'rl> Parser<'rl>
 			debug!("get_value: Constant {}[{}:{}] * {}", val, start, end, count);
 			for _ in (0 .. count) {
 				for i in range_inc(start, end) {
-					values.push( unit.get_constant( (val >> i as usize) & 1 == 1 ) );
+					let v = unit.get_constant( (val >> i as usize) & 1 == 1 );
+					debug!("- {:?}", v);
+					values.push( v );
 				}
 			}
 			
@@ -218,7 +222,12 @@ impl<'rl> Parser<'rl>
 		TokParenOpen => {
 			let (elename, params, inputs) = self.get_element(meshroot, unit);
 			syntax_assert_get!(self, TokParenClose => (), "Expected TokParenClose after sub-element");
-			values.extend( unit.append_element( meshroot, elename, params, inputs, None ).into_iter() );
+			let ll = match unit.append_element( meshroot, &elename, params, inputs, None )
+				{
+				Ok(v) => v,
+				Err(e) => panic!("Error appending element {} : {:?}", elename, e),
+				};
+			values.extend( ll.into_iter() );
 			},
 		_ => syntax_error!(self.lexer, "Expected TokLine or TokGroup when parsing value, got {}", tok)
 		}
@@ -238,7 +247,7 @@ impl<'rl> Parser<'rl>
 				ret.push( unit.get_link(&name) );
 				},
 			TokGroup(name) => {
-				if unit.get_group(&name) != None {
+				if unit.get_group(&name).is_some() {
 					panic!("Group @{} is already defined", name)
 				}
 				syntax_assert_get!(self, TokSqOpen => (), "Expected TokSqOpen after group in connection list");
@@ -327,7 +336,11 @@ impl<'rl> Parser<'rl>
 		{
 			let (name,params,inputs) = self.get_element(meshroot, unit);
 			syntax_assert_get!(self, TokNewline => (), "Expected newline after element descriptor");
-			unit.append_element(meshroot, name, params, inputs, Some(outputs));
+			match unit.append_element(meshroot, &name, params, inputs, Some(outputs))
+			{
+			Ok(_) => {},
+			Err(e) => syntax_error!(self.lexer, "Error appending element {} : {:?}", name, e),
+			}
 		}
 		// If it's not, then it's a binding operation
 		else
@@ -342,36 +355,55 @@ impl<'rl> Parser<'rl>
 			// TODO: .bind should check that the lefthand side has not yet been rebound
 			// outputs,inputs: Vec<Rc<Link>>
 			for (out,inp) in outputs.iter().zip(inputs.iter()) {
-				out.borrow_mut().bind( inp );
+				unit.get_link_mut(out).bind( inp );
 			}
 		}
 	}
 }
 
-struct RangeInc(pub usize, pub usize);
+struct RangeInc(pub usize, pub usize, pub usize);
 
 impl ::std::iter::Iterator for RangeInc
 {
 	type Item = usize;
 	fn next(&mut self) -> Option<usize> {
-		if self.0 == self.1 {
-			None
-		}
-		else if self.0 < self.1 {
-			let rv = self.0;
-			self.0 = self.0 + 1;
-			Some(rv)
+		if self.0 <= self.1 {
+			if self.2 > self.1 {
+				None
+			}
+			else {
+				let rv = self.2;
+				self.2 += 1;
+				Some(rv)
+			}
 		}
 		else {
-			let rv = self.0;
-			self.0 = self.0 - 1;
-			Some(rv)
+			if self.2 < self.1 || self.2 == !0 {
+				None
+			}
+			else {
+				let rv = self.2;
+				if self.2 == 0 {
+					self.2 = !0;
+				}
+				else {
+					self.2 -= 1;
+				}
+				Some(rv)
+			}
 		}
 	}
 }
 
 fn range_inc(first: usize, last: usize) -> RangeInc {
-	RangeInc(first, last)
+	RangeInc(first, last, first)
+}
+#[test]
+fn test_range_inc() {
+	assert_eq!( range_inc(0,0).collect::<Vec<_>>(), vec![0] );
+	assert_eq!( range_inc(3,0).collect::<Vec<_>>(), vec![3, 2, 1, 0] );
+	assert_eq!( range_inc(0,3).collect::<Vec<_>>(), vec![0, 1, 2, 3] );
+	assert_eq!( range_inc(4,7).collect::<Vec<_>>(), vec![4, 5, 6, 7] );
 }
 
 /// @brief Wraps 'curunit' as a reassignable reference
@@ -420,10 +452,11 @@ fn handle_meta(parser: &mut Parser, meshroot: &mut ::cct_mesh::Root, state: &mut
 		//	syntax_error!(parser.lexer, "#defunit outside of root");
 		//}
 		
-		match meshroot.add_unit(&unitname) {
-			Some(x) => state.set_curunit(x),
-			None => panic!("Redefinition of unit {}", unitname)
-			};
+		match meshroot.add_unit(unitname)
+		{
+		Ok(x) => state.set_curunit(x),
+		Err(e) => panic!("Redefinition of unit {}", e)
+		}
 		},
 	"input" => {
 		// Parse a list of lines into a vector
@@ -464,10 +497,11 @@ fn handle_meta(parser: &mut Parser, meshroot: &mut ::cct_mesh::Root, state: &mut
 		//	syntax_error!(parser.lexer, "#testcase outside of root");
 		//}
 		
-		match meshroot.add_test(&name, limit as u32) {
-			Some(x) => state.set_curtest( x ),
-			None => panic!("Redefinition of test \"{}\"", name)
-			};
+		match meshroot.add_test(name, limit as u32)
+		{
+		Ok(x) => state.set_curtest( x ),
+		Err(e) => panic!("Redefinition of test \"{}\"", e)
+		}
 		},
 	"testcomplete" => {
 		let conditions = parser.get_value_list( meshroot, state.get_curunit() );
@@ -524,9 +558,10 @@ fn handle_meta(parser: &mut Parser, meshroot: &mut ::cct_mesh::Root, state: &mut
 
 pub fn load(filename: &str) -> Option<::cct_mesh::Root>
 {
+	use std::process::{Command,Stdio};
 	debug!("load(filename='{}')", filename);
 	// 1. Spin up a yasm preprocessor
-	let mut subproc = match ::std::process::Command::new("yasm").arg("-e").arg(filename).spawn() {
+	let mut subproc = match Command::new("yasm").arg("-e").arg(filename).stdout(Stdio::piped()).spawn() {
 		Ok(child) => child,
 		Err(e) => panic!("Failed to execute yasm to preprocess file. Reason: {}", e),
 		};
@@ -535,7 +570,8 @@ pub fn load(filename: &str) -> Option<::cct_mesh::Root>
 		None => panic!("BUGCHECK - Stdout was None"),
 		};
 	// 2. Create a parser object
-	let mut input_iter = output_pipe.chars().map(|r| r.unwrap());
+	//let mut input_iter = output_pipe.chars().map(|r| r.unwrap());
+	let mut input_iter = output_pipe.bytes().map(|r| r.unwrap() as char);
 	let mut parser = Parser::new(&mut input_iter, filename);
 	
 	// 3. Create mesh root

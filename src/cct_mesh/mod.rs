@@ -1,13 +1,8 @@
 //
 //
 //
-
-use std::string::String;
 use std::rc::Rc;
-use std::rc::Weak;
-use std::cell::RefCell;
-use std::default::Default;
-use std::collections::HashMap;
+use std::collections::{HashMap,hash_map};
 use std::collections::LinkedList;
 
 use cct_mesh::flat::NodeRef;
@@ -27,12 +22,12 @@ impl ::std::ops::Deref for LinkIdx { type Target = u32; fn deref(&self) -> &u32 
 struct Link
 {
 	name: String,
-	reflink: Option<LinkWRef>,
+	reflink: Option<LinkRef>,
 	aliased: Option<LinkIdx>,	// Used during node counting
 }
 
-pub type LinkRef = Rc<RefCell<Link>>;
-pub type LinkWRef = Weak<RefCell<Link>>;
+#[derive(Debug)]
+pub struct LinkRef(usize);
 pub type LinkList = Vec<LinkRef>;
 type Flatmap = HashMap<String,Rc<flat::Mesh>>;
 
@@ -70,6 +65,7 @@ struct UnitRef
 	outputs: LinkList,
 }
 
+#[derive(Default)]
 pub struct Unit
 {
 	name: String,
@@ -81,6 +77,7 @@ pub struct Unit
 	anon_links: LinkedList<LinkRef>,
 	links:  ::std::collections::HashMap<String,LinkRef>,	// Definitive list of links
 	groups: ::std::collections::HashMap<String,LinkList>,
+	link_collection: Vec<Link>,
 	
 	elements: LinkedList<Element>,
 	subunits: LinkedList<UnitRef>,
@@ -139,13 +136,19 @@ impl ::std::cmp::PartialEq for Link {
 impl ::std::cmp::PartialOrd for Link {
 	fn partial_cmp(&self, x: &Link) -> Option<::std::cmp::Ordering> { Some(self.cmp(x)) }
 }
-impl ::std::cmp::Eq for Link
-{
-}
+impl ::std::cmp::Eq for Link { }
+
 impl Link
 {
-	pub fn bind(&mut self, other: &Rc<RefCell<Link>>) {
-		self.reflink = Some(other.downgrade());
+	pub fn new<T: Into<String>>(name: T) -> Link {
+		Link {
+			name: name.into(),
+			..Default::default()
+		}
+	}
+	
+	pub fn bind(&mut self, other: &LinkRef) {
+		self.reflink = Some(other.clone());
 		//debug!("Bound link {} to {}'s value", self.name, other.name);
 	}
 	pub fn tag(&mut self, value: LinkIdx) -> bool {
@@ -155,8 +158,7 @@ impl Link
 		assert!( self.aliased == None );
 		match self.reflink {
 		Some(ref l) => {
-			let t = l.upgrade().unwrap();
-			debug!("Link '{}' refers to '{:?}'", self.name, t.borrow().name);
+			debug!("Link '{}' refers to #{:?}'", self.name, l);
 			false
 			},
 		None => {
@@ -176,19 +178,18 @@ impl Link
 				let mut other = other_ref.clone();
 				loop
 				{
-					let other_rc = other.upgrade().unwrap();
-					let other_link = other_rc.borrow();
-					if other_link.reflink.is_none()
+					let other_link: &mut Link = unimplemented!();
+					if let Some(ref x) = other_link.reflink
+					{
+						other = (*x).clone();
+					}
+					else
 					{
 						self.aliased = other_link.aliased;
 						debug!("Indirect tag of '{}' from '{}' ({:?})",
 							self.name, other_link.name, self.aliased);
 						assert!(self.aliased != None);
 						break;
-					}
-					else
-					{
-						other = exp!(other_link.reflink, Some(ref x) => x.clone());
 					}
 				}
 				},
@@ -200,55 +201,61 @@ impl Link
 		return self.aliased;
 	}
 }
-//impl ::std::fmt::Debug for ::std::cell::RefCell<::cct_mesh::Link>
+
+impl Clone for LinkRef {
+	fn clone(&self) -> LinkRef {
+		LinkRef( self.0 )
+	}
+}
+impl Default for LinkRef {
+	fn default() -> LinkRef {
+		LinkRef(!0)
+	}
+}
+
+//impl Default for Unit
 //{
-//	fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-//		let link = self.borrow();
-//		if &*link.name == "" {
-//			write!(f, "<anon>")
-//		}
-//		else {
-//			write!(f, "{}", self.borrow().name)
+//	fn default() -> Unit {
+//		Unit {
+//			name: "".to_string(),
+//			inputs: Vec::new(),
+//			outputs: Vec::new(),
+//			
+//			link_zero: Unit::make_link( "=0".to_string() ),
+//			link_one: Unit::make_link( "=1".to_string() ),
+//			anon_links: LinkedList::new(),
+//			links:  ::std::collections::HashMap::new(),	// Definitive list of links
+//			groups: ::std::collections::HashMap::new(),
+//			
+//			elements: LinkedList::new(),
+//			subunits: LinkedList::new(),
+//			
+//			breakpoints: LinkedList::new(),
+//			disp_items: LinkedList::new(),
+//			//visgroups: LinkedList::new(),
+//			flattened: None,
 //		}
 //	}
 //}
-
-impl Default for Unit
-{
-	fn default() -> Unit {
-		Unit {
-			name: "".to_string(),
-			inputs: Vec::new(),
-			outputs: Vec::new(),
-			
-			link_zero: Unit::make_link( "=0".to_string() ),
-			link_one: Unit::make_link( "=1".to_string() ),
-			anon_links: LinkedList::new(),
-			links:  ::std::collections::HashMap::new(),	// Definitive list of links
-			groups: ::std::collections::HashMap::new(),
-			
-			elements: LinkedList::new(),
-			subunits: LinkedList::new(),
-			
-			breakpoints: LinkedList::new(),
-			disp_items: LinkedList::new(),
-			//visgroups: LinkedList::new(),
-			flattened: None,
-		}
-	}
-}
 impl Unit
 {
-	pub fn new(name: &String) -> Unit {
+	pub fn new(name: String) -> Unit {
 		Unit {
-			name: name.clone(),
-			link_zero: Unit::make_link( "=0".to_string() ),
-			link_one:  Unit::make_link( "=1".to_string() ),
+			name: name,
+			link_zero: LinkRef(0),
+			link_one:  LinkRef(1),
+			links: chain!(
+				Some((String::from("=0"), LinkRef(0))).into_iter(),
+				Some((String::from("=1"), LinkRef(1))).into_iter()
+				).collect(),
+			link_collection: vec![ Link::new("=0"), Link::new("=1"), ],
 			..Default::default()
 			}
 	}
-	fn make_link(name: String) -> LinkRef {
-		Rc::new(RefCell::new( Link { name: name, .. Default::default() } ))
+	
+	fn make_link(&mut self, name: String) -> LinkRef {
+		self.link_collection.push( Link { name: name, .. Default::default() } );
+		LinkRef( self.link_collection.len()-1 )
 	}
 	pub fn get_constant(&mut self, is_one: bool) -> LinkRef {
 		if is_one {
@@ -258,19 +265,27 @@ impl Unit
 			self.link_zero.clone()
 		}
 	}
-	pub fn get_link(&mut self, name: &String) -> LinkRef {
+	pub fn get_link_ref(&self, lr: &LinkRef) -> &Link {
+		&self.link_collection[lr.0]
+	}
+	pub fn get_link_mut(&mut self, lr: &LinkRef) -> &mut Link {
+		&mut self.link_collection[lr.0]
+	}
+	
+	pub fn get_link(&mut self, name: &str) -> LinkRef {
 		match self.links.get(name)
 		{
 		Some(x) => return x.clone(),
 		None => ()
 		}
 		
-		let val = Unit::make_link(name.clone());
-		self.links.insert(name.clone(), val.clone());
+		let val = self.make_link(String::from(name));
+		self.links.insert(String::from(name), val.clone());
 		val
 	}
 	fn make_anon_link(&mut self) -> LinkRef {
-		let link = Unit::make_link( format!("#{}", self.anon_links.len()) );
+		let name = format!("#{}", self.anon_links.len());
+		let link = self.make_link(name);
 		self.anon_links.push_back( link.clone() );
 		return link;
 	}
@@ -310,35 +325,32 @@ impl Unit
 		}
 	}
 	
-	pub fn append_element(&mut self, meshroot: &Root, name: String, params: Vec<u64>, inputs: LinkList, outputs: Option<LinkList>) -> LinkList
+	pub fn append_element(&mut self, meshroot: &Root, name: &str, params: Vec<u64>, inputs: LinkList, outputs: Option<LinkList>) -> Result<LinkList,String>
 	{
 		debug!("append_element('{}', {:?}, in={:?}, out={:?})", name, params, inputs, outputs);
-		match meshroot.get_unit(&name)
+		match meshroot.get_unit(name)
 		{
 		// Referencing a sub-unit
 		Some(unit) => {
 			let out = match outputs { None => self.make_anon_links(unit.outputs.len()), Some(o) => o };
 			if out.len() != unit.outputs.len() {
-				panic!("Output mismatch for unit '{}', got {} expected {}",
-					name, out.len(), unit.outputs.len());
+				return Err( format!("Output mismatch for unit '{}', got {} expected {}",
+					name, out.len(), unit.outputs.len()) );
 			}
 			if inputs.len() != unit.inputs.len() {
-				panic!("Input mismatch for unit '{}', got {} expected {}",
-					name, inputs.len(), unit.inputs.len());
+				return Err(format!("Input mismatch for unit '{}', got {} expected {}",
+					name, inputs.len(), unit.inputs.len()));
 			}
 			let r = UnitRef {
-				name: name,
+				name: String::from(name),
 				inputs: inputs,
 				outputs: out.clone(),
 				};
 			self.subunits.push_back(r);
-			out
+			Ok( out )
 			},
 		None => {
-			let ele = match ::elements::create(&name, &*params, inputs.len()) {
-				Ok(e) => e,
-				Err(msg) => panic!("Error in creating '{}' - {}", name, msg),
-				};
+			let ele = try!(::elements::create(name, &*params, inputs.len()));
 			
 			let out = match outputs { Some(o) => o, None => self.make_anon_links( ele.get_outputs(inputs.len()) ) };
 			
@@ -347,7 +359,7 @@ impl Unit
 				inputs: inputs,
 				outputs: out.clone(),
 				});
-			out
+			Ok( out )
 			}
 		}
 	}
@@ -380,12 +392,14 @@ impl Unit
 		// - Tag (and count) all links that arent not referencing another link
 		for link in chain!( self.anon_links.iter(), self.links.values() )
 		{
-			if link.borrow_mut().tag(From::from(n_links)) { n_links += 1; }
+			if self.link_collection[link.0].tag(From::from(n_links)) {
+				n_links += 1;
+			}
 		}
 		// - And once all non-reference links are tagged, copy those tags to the reference links
 		for link in chain!( self.anon_links.iter(), self.links.values() )
 		{
-			link.borrow_mut().tag_from_ref();
+			self.link_collection[link.0].tag_from_ref();
 		}
 		let n_local_links = n_links;
 		
@@ -413,7 +427,7 @@ impl Unit
 		info!("w/ subunits n_eles={}, n_links={}, n_bps={}, n_disp={}",
 			n_eles, n_links, n_bps, n_disp);
 		
-		let mut ret = flat::Mesh::new(n_links, n_eles, n_bps, n_disp, &self.inputs, &self.outputs);
+		let mut ret = flat::Mesh::new(n_links, n_eles, n_bps, n_disp, self, &self.inputs, &self.outputs);
 
 		/*
 		// Add names to nodes
@@ -438,8 +452,8 @@ impl Unit
 			debug!(" Element '{}'", ele.inst.name());
 			let inst = flat::ElementInst {
 				inst: ele.inst.dup(),
-				inputs:  flat::linklist_to_noderefs(&ele.inputs),
-				outputs: flat::linklist_to_noderefs(&ele.outputs),
+				inputs:  flat::linklist_to_noderefs(self, &ele.inputs),
+				outputs: flat::linklist_to_noderefs(self, &ele.outputs),
 				};
 			ret.push_ele( inst );
 		}
@@ -450,7 +464,7 @@ impl Unit
 			debug!("Breakpoint '{}'", bp.name);
 			ret.push_breakpoint( flat::Breakpoint::new(
 				bp.name.clone(),
-				flat::linklist_to_noderefs(&bp.conds)
+				flat::linklist_to_noderefs(self, &bp.conds)
 				) );
 		}
 		// Add display items
@@ -459,8 +473,8 @@ impl Unit
 			debug!("Display item '{}'", di.text);
 			ret.push_disp( flat::Display::new(
 				di.text.clone(),
-				flat::linklist_to_noderefs(&di.condition),
-				flat::linklist_to_noderefs(&di.values),
+				flat::linklist_to_noderefs(self, &di.condition),
+				flat::linklist_to_noderefs(self, &di.values),
 				) );
 		}
 		
@@ -487,8 +501,8 @@ impl Unit
 	/// @return Number of internal noes
 	fn flatten_merge_subunit(&self, mesh: &mut flat::Mesh, flattened: &flat::Mesh, subu: &UnitRef, bind_node_idx: u32) -> u32
 	{
-		let inputs = flat::linklist_to_noderefs( &subu.inputs );
-		let outputs = flat::linklist_to_noderefs( &subu.outputs );
+		let inputs  = flat::linklist_to_noderefs( self, &subu.inputs );
+		let outputs = flat::linklist_to_noderefs( self, &subu.outputs );
 		let mut aliases: Vec<Option<NodeRef>> = ::from_elem( flattened.n_nodes, None );
 		
 		assert_eq!( flattened.inputs.len(),  inputs.len()  );
@@ -568,9 +582,9 @@ impl Unit
 
 impl Test
 {
-	pub fn new(name: &String, exec_limit: u32) -> Test {
+	pub fn new(name: String, exec_limit: u32) -> Test {
 		Test {
-			unit: Unit::new( &format!("!TEST:{}",name)),
+			unit: Unit::new(format!("!TEST:{}",name)),
 			exec_limit: exec_limit,
 			..Default::default()
 		}
@@ -603,12 +617,12 @@ impl Test
 		let asserts = self.assertions.iter().map( |a|
 			flat::TestAssert::new(
 				a.line,
-				flat::linklist_to_noderefs(&a.conditions),
-				flat::linklist_to_noderefs(&a.values),
-				flat::linklist_to_noderefs(&a.expected),
+				flat::linklist_to_noderefs(&self.unit, &a.conditions),
+				flat::linklist_to_noderefs(&self.unit, &a.values),
+				flat::linklist_to_noderefs(&self.unit, &a.expected),
 				)
 			).collect();
-		flat::Test::new(flat, self.exec_limit, flat::linklist_to_noderefs(&self.completion), asserts)
+		flat::Test::new(flat, self.exec_limit, flat::linklist_to_noderefs(&self.unit, &self.completion), asserts)
 	}
 }
 
@@ -616,7 +630,7 @@ impl Root
 {
 	pub fn new() -> Root {
 		Root {
-			rootunit: Unit::new( &"".to_string() ),
+			rootunit: Unit::new( String::from("") ),
 			..Default::default()
 			}
 	}
@@ -624,29 +638,22 @@ impl Root
 	pub fn get_root_unit(&mut self) -> &mut Unit {
 		return &mut self.rootunit;
 	}
-	pub fn add_unit(&mut self, name: &String) -> Option<&mut Unit> {
-		match self.units.get_mut(name)
+	pub fn add_unit(&mut self, name: String) -> Result<&mut Unit,String> {
+		match self.units.entry(name.clone())
 		{
-		Some(_) => return None,
-		None => ()
+		hash_map::Entry::Occupied(_) => Err(name),
+		hash_map::Entry::Vacant(e) => Ok( e.insert(Unit::new(name)) ),
 		}
-		let val = Unit::new(name);
-		self.units.insert(name.clone(), val);
-		return self.units.get_mut(name);
 	}
-	pub fn get_unit(&self, name: &String) -> Option<&Unit> {
-		return self.units.get(name);
+	pub fn get_unit(&self, name: &str) -> Option<&Unit> {
+		self.units.get(name)
 	}
-	pub fn add_test(&mut self, name: &String, exec_limit: u32) -> Option<&mut Test> {
-		match self.tests.get_mut(name)
+	pub fn add_test(&mut self, name: String, exec_limit: u32) -> Result<&mut Test,String> {
+		match self.tests.entry(name.clone())
 		{
-		Some(_) => return None,
-		None => ()
+		hash_map::Entry::Occupied(_) => Err(name),
+		hash_map::Entry::Vacant(e) => Ok( e.insert(Test::new(name, exec_limit)) ),
 		}
-		
-		let val = Test::new(name, exec_limit);
-		self.tests.insert(name.clone(), val);
-		return self.tests.get_mut(name);
 	}
 	
 	pub fn flatten_root(&mut self) -> flat::Mesh

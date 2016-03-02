@@ -24,8 +24,12 @@ enum TestStatus
 	Timeout(u32),
 }
 
+//#[cfg(not(test))]
+#[allow(dead_code)]
 fn main()
 {
+	env_logger::init().unwrap();
+	
 	println!("main()");
 	// 1. Parse command line arguments
 	let mut opts = ::getopts::Options::new();
@@ -54,7 +58,7 @@ fn main()
 	}
 	
 	// 2. Load circuit file
-	let mut mesh = match parse::load( &args.free[1] ) {
+	let mut mesh = match parse::load( &args.free[0] ) {
 		Some(x) => x,
 		None => panic!("Parsing of {} failed", args.free[1])
 		};
