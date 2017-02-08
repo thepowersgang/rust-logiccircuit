@@ -105,7 +105,7 @@ fn main()
 		// Simulate until stopped
 		let mut sim = ::simulator::Engine::new( &flat );
 		let step_count: u32 = 20;
-		for _ in (0 .. step_count)
+		for _ in 0 .. step_count
 		{
 			sim.tick();
 			
@@ -121,7 +121,7 @@ fn main()
 fn run_test(test: &cct_mesh::flat::Test, show_display: bool) -> TestStatus
 {
 	let mut sim = ::simulator::Engine::new( test.get_mesh() );
-	for ticknum in (0 .. test.exec_limit())
+	for ticknum in 0 .. test.exec_limit()
 	{
 		sim.tick();
 		

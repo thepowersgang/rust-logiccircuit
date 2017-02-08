@@ -147,15 +147,16 @@ impl Link
 		}
 	}
 	
+	/// Bind this link to another
 	pub fn bind(&mut self, other: &LinkRef) {
 		self.reflink = Some(other.clone());
 		//debug!("Bound link {} to {}'s value", self.name, other.name);
 	}
+	/// Tag a link with the target value
 	pub fn tag(&mut self, value: LinkIdx) -> bool {
-		if self.aliased != None {
-			panic!("Link '{}' already aliased to #{:?}", self.name, self.aliased.as_ref().unwrap());
+		if let Some(ref tgt) = self.aliased {
+			panic!("Link '{}' already aliased to #{:?}", self.name, tgt);
 		}
-		assert!( self.aliased == None );
 		match self.reflink {
 		Some(ref l) => {
 			debug!("Link '{}' refers to #{:?}'", self.name, l);
@@ -168,6 +169,7 @@ impl Link
 			}
 		}
 	}
+	/// ? Set the alias/tag by following `self.reflink`
 	pub fn tag_from_ref(&mut self)
 	{
 		if self.aliased == None
@@ -175,10 +177,10 @@ impl Link
 			match self.reflink
 			{
 			Some(ref other_ref) => {
-				let mut other = other_ref.clone();
+				let other = other_ref.clone();
 				loop
 				{
-					let other_link: &mut Link = unimplemented!();
+					let other_link: &Link = unimplemented!();
 					if let Some(ref x) = other_link.reflink
 					{
 						other = (*x).clone();
@@ -192,13 +194,15 @@ impl Link
 						break;
 					}
 				}
+				
+				
 				},
 			None => {}
 			}
 		}
 	}
 	pub fn get_alias(&self) -> Option<LinkIdx> {
-		return self.aliased;
+		self.aliased
 	}
 }
 
@@ -295,7 +299,7 @@ impl Unit
 	
 	pub fn make_group(&mut self, name: &String, size: usize) {
 		let mut val = Vec::with_capacity(size);
-		for i in (0 .. size) {
+		for i in 0 .. size {
 			val.push( self.get_link(&format!("{}[{:2}]", name, i)) );
 		}
 		self.groups.insert(name.clone(), val);

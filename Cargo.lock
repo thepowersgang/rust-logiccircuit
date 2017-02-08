@@ -48,3 +48,10 @@ name = "regex"
 version = "0.1.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
+[metadata]
+"checksum env_logger 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)" = "4abfefaaa4fc67e4cdec29b240562f7d8eb1bc1e792a593b5d21e8aba31db2d2"
+"checksum getopts 0.2.10 (registry+https://github.com/rust-lang/crates.io-index)" = "8cbea4ddb745c0178904bc12d149c75fb413bfd3c5313f2b4ab8f2c3a5daf1c6"
+"checksum glob 0.2.10 (registry+https://github.com/rust-lang/crates.io-index)" = "eb4d47ed2ef6a2600c4f7d81b66aa6b54538b3feae0582ffb918773fcb89408b"
+"checksum libc 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)" = "4e643e4dfa31fd135586df9da9999e8e5eb8e753bc3ce0765aef85469b6db1da"
+"checksum log 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)" = "d2ee3324e161fe61168b08bcd096f1e023d14f0777a076ba14d1825ea3b99d40"
+"checksum regex 0.1.30 (registry+https://github.com/rust-lang/crates.io-index)" = "56852ad02630deda838fd6111549259133a99c8b205774a8ce3fb0a0ba23d1f7"

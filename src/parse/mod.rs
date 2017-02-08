@@ -127,7 +127,7 @@ impl<'rl> Parser<'rl>
 					1
 				};
 			debug!("get_value: Line '{}' * {}", name, count);
-			for _ in (0 .. count) {
+			for _ in 0 .. count {
 				let v = unit.get_link(&name);
 				trace!("- {:?}", v);
 				values.push( v );
@@ -205,12 +205,13 @@ impl<'rl> Parser<'rl>
 				syntax_warn!(self.lexer, "Start or end are greater than 63 (start={}, end={})", start, end);
 			}
 			
-			if val >> ::std::cmp::max(start,end)+1 != 0 {
-				syntax_warn!(self.lexer, "Value exceeds extracted range (0x{:x} > 1<<{})", val, ::std::cmp::max(start,end)+1);
+			let max_bits = ::std::cmp::max(start,end)+1;
+			if max_bits < 32 && val >> max_bits != 0 {
+				syntax_warn!(self.lexer, "Value exceeds extracted range (0x{:x} > 1<<{})", val, max_bits);
 			}
 			
 			debug!("get_value: Constant {}[{}:{}] * {}", val, start, end, count);
-			for _ in (0 .. count) {
+			for _ in 0 .. count {
 				for i in range_inc(start, end) {
 					let v = unit.get_constant( (val >> i as usize) & 1 == 1 );
 					debug!("- {:?}", v);

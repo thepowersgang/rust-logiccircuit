@@ -26,7 +26,7 @@ pub type NewEleResult = Result<Box<Element+'static>,String>;
 
 fn write_uint(outlines: &mut [bool], base: usize, count: u8, val: u64)
 {
-	for i in (0 .. count as usize)
+	for i in 0 .. count as usize
 	{
 		if (val & 1u64 << i) != 0
 		{
@@ -106,7 +106,7 @@ impl Element for ElementDELAY
 		assert!( inlines.len() == outlines.len() );
 		if self.count == 0
 		{
-			for i in (0 .. inlines.len())
+			for i in 0 .. inlines.len()
 			{
 				outlines[i] |= inlines[i];
 			}
@@ -302,18 +302,18 @@ impl Element for $name
 	{
 		let fixed_lines = inlines.len() - (self.bussize as usize)*(self.buscount as usize);
 		let mut val = $init;
-		for i in (0 .. fixed_lines)
+		for i in 0 .. fixed_lines
 		{
 			let inval = inlines[i];
 			val = $op(val,inval);
 		}
 		let baseval = val;
 		
-		for i in (0 .. self.bussize as usize)
+		for i in 0 .. self.bussize as usize
 		{
 			let ofs = fixed_lines + i;
 			val = baseval;
-			for j in (0 .. self.buscount as usize)
+			for j in 0 .. self.buscount as usize
 			{
 				let inval = inlines[ofs + j * (self.bussize as usize)];
 				val = $op(val, inval);
@@ -478,7 +478,7 @@ impl Element for ElementMUX
 		let ofs = 1 + (self.bits as usize) + index * (self.bussize as usize);;
 		if enable
 		{
-			for i in (0 .. self.bussize as usize)
+			for i in 0 .. self.bussize as usize
 			{
 				outlines[i] |= inlines[ofs + i];
 			}
@@ -535,7 +535,7 @@ impl Element for ElementDEMUX
 		let bussize = inlines.len() - ofs;
 		if enable
 		{
-			for i in (0 .. bussize)
+			for i in 0 .. bussize
 			{
 				outlines[index*bussize + i] |= inlines[ofs+i];
 			}

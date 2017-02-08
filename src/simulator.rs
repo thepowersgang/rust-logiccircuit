@@ -170,7 +170,7 @@ fn print_display(fmtstr: &str, vals: &[bool])
 	if idx != vals.len()
 	{
 		print!(">> ");
-		for i in (idx .. vals.len()) {
+		for i in idx .. vals.len() {
 			print!("{}", match vals[i] {false=>0,true=>1});
 		}
 	}
@@ -181,7 +181,7 @@ fn print_display(fmtstr: &str, vals: &[bool])
 pub fn read_uint(inlines: &[bool], base: usize, count: u8) -> u64
 {
 	let mut val: u64 = 0;
-	for i in (0 .. count as usize)
+	for i in 0 .. count as usize
 	{
 		if inlines[base+i]
 		{
