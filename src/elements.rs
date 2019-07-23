@@ -16,6 +16,7 @@ pub enum Errcode
 
 pub trait Element
 {
+	fn new(params: &[u64], n_inputs: usize) -> NewEleResult where Self: Sized;
 	fn name(&self) -> String;
 	fn get_outputs(&self, n_inputs: usize) -> usize;
 	fn dup(&self) -> Box<Element+'static>;
@@ -50,16 +51,20 @@ pub fn create(name: &str, params: &[u64], n_inputs: usize) -> NewEleResult
 	"ENABLE" => ElementENABLE::new(params, n_inputs),
 	
 	// Builtin Units
+	"JKFLIPFLOP" => ElementJkFlipFlop::new(params, n_inputs),
 	"LATCH" => ElementLATCH::new(params, n_inputs),
 	"MUX" => ElementMUX::new(params, n_inputs),
 	"DEMUX" => ElementDEMUX::new(params, n_inputs),
 	"SEQUENCER" => ElementSEQUENCER::new(params, n_inputs),
 	"MEMORY_DRAM" => ElementMEMORY_DRAM::new(params, n_inputs),
+
+	//"ROM" => ElementROM::new(params, n_inputs),
 	
 	// Logic Gates
 	"AND" => ElementAND::new(params, n_inputs),
 	"OR"  => ElementOR::new(params, n_inputs),
 	"XOR" => ElementXOR::new(params, n_inputs),
+	"NAND" => ElementNAND::new(params, n_inputs),
 	"NOR" => ElementNOR::new(params, n_inputs),
 	"NXOR" => ElementNXOR::new(params, n_inputs),
 	"XNOR" => ElementNXOR::new(params, n_inputs),	// < same
@@ -77,7 +82,10 @@ struct ElementDELAY
 }
 impl ElementDELAY
 {
-	pub fn new(params: &[u64], n_inputs: usize) -> NewEleResult
+}
+impl Element for ElementDELAY
+{
+	fn new(params: &[u64], n_inputs: usize) -> NewEleResult
 	{
 		let count = get_or!(params, 0, 1u64) as usize - 1;
 		Ok( Box::new(ElementDELAY {
@@ -86,9 +94,6 @@ impl ElementDELAY
 			vals: ::from_elem(count*n_inputs, false),
 			} ) )
 	}
-}
-impl Element for ElementDELAY
-{
 	fn name(&self) -> String {
 		return format!("ElementDELAY{{{}}}", self.count+1);
 	}
@@ -130,7 +135,7 @@ impl Element for ElementDELAY
 
 
 struct ElementENABLE;
-impl ElementENABLE
+impl Element for ElementENABLE
 {
 	fn new(_/*params*/: &[u64], n_inputs: usize) -> NewEleResult
 	{
@@ -140,9 +145,6 @@ impl ElementENABLE
 		
 		return Ok( Box::new(ElementENABLE) as Box<Element> );
 	}
-}
-impl Element for ElementENABLE
-{
 	fn name(&self) -> String {
 		return format!("ElementENABLE");
 	}
@@ -166,14 +168,13 @@ impl Element for ElementENABLE
 	}
 }
 
-#[derive(Clone)]
-#[derive(Default)]
+#[derive(Clone,Default)]
 struct ElementPULSE
 {
 	dir_is_falling: bool,
 	last_value: bool,
 }
-impl ElementPULSE
+impl Element for ElementPULSE
 {
 	fn new(params: &[u64], n_inputs: usize) -> NewEleResult
 	{
@@ -188,9 +189,6 @@ impl ElementPULSE
 		
 		return Ok( Box::new(ElementPULSE { dir_is_falling: dir, last_value: false }) as Box<Element> );
 	}
-}
-impl Element for ElementPULSE
-{
 	fn name(&self) -> String {
 		return format!("ElementPULSE{{{}}}", self.dir_is_falling);
 	}
@@ -222,7 +220,7 @@ struct ElementHOLD
 	hold_time: usize,
 	times: Vec<usize>,
 }
-impl ElementHOLD
+impl Element for ElementHOLD
 {
 	fn new(params: &[u64], n_inputs: usize) -> NewEleResult
 	{
@@ -234,9 +232,6 @@ impl ElementHOLD
 		
 		return Ok( Box::new(ElementHOLD { hold_time: time, times: ::from_elem(n_inputs, 0) }) as Box<Element> );
 	}
-}
-impl Element for ElementHOLD
-{
 	fn name(&self) -> String {
 		return format!("ElementHOLD{{{}}}", self.hold_time);
 	}
@@ -270,9 +265,9 @@ struct $name
 	bussize: u8,
 	buscount: u8,
 }
-impl $name
+impl Element for $name
 {
-	pub fn new(params: &[u64], n_inputs: usize) -> NewEleResult
+	fn new(params: &[u64], n_inputs: usize) -> NewEleResult
 	{
 		let bussize  = get_or!(params, 0, 1u64) as u8;
 		let buscount = get_or!(params, 1, 1u64) as u8;
@@ -284,9 +279,6 @@ impl $name
 			Ok( Box::new($name { bussize: bussize, buscount: buscount }) as Box<Element> )
 		}
 	}
-}
-impl Element for $name
-{
 	fn name(&self) -> String {
 		return format!("{}{{{},{}}}", stringify!($name), self.bussize, self.buscount);
 	}
@@ -326,26 +318,24 @@ impl Element for $name
 ) }
 
 def_logic!{ ElementNXOR, false, |v:bool,i:bool| v^i, |v:bool| !v }
+def_logic!{ ElementNAND, true,  |v:bool,i:bool| v&i, |v:bool| !v }
 def_logic!{ ElementNOR,  false, |v:bool,i:bool| v|i, |v:bool| !v }
 def_logic!{ ElementXOR,  false, |v:bool,i:bool| v^i, |v| v }
 def_logic!{ ElementAND,  true,  |v:bool,i:bool| v&i, |v| v }
 def_logic!{ ElementOR,   false, |v:bool,i:bool| v|i, |v| v }
 
 struct ElementNOT;
-impl ElementNOT
+impl Element for ElementNOT
 {
 	fn new(_/*params*/: &[u64], _/*n_inputs*/: usize) -> NewEleResult
 	{
-		return Ok( Box::new(ElementNOT) as Box<Element> );
+		Ok( Box::new(ElementNOT) as Box<Element> )
 	}
-}
-impl Element for ElementNOT
-{
 	fn name(&self) -> String {
-		return format!("ElementNOT");
+		format!("ElementNOT")
 	}
 	fn get_outputs(&self, n_inputs: usize) -> usize {
-		return n_inputs;
+		n_inputs
 	}
 	
 	fn dup(&self) -> Box<Element+'static> {
@@ -370,9 +360,9 @@ struct ElementLATCH
 {
 	vals: Vec<bool>,
 }
-impl ElementLATCH
+impl Element for ElementLATCH
 {
-	pub fn new(params: &[u64], n_inputs: usize) -> NewEleResult
+	fn new(params: &[u64], n_inputs: usize) -> NewEleResult
 	{
 		let size = get_or!(params, 0, 1u64) as usize;
 		if size == 0 {
@@ -383,14 +373,11 @@ impl ElementLATCH
 		}
 		Ok( Box::new(ElementLATCH { vals: ::from_elem(size, false), ..Default::default() }) as Box<Element> )
 	}
-}
-impl Element for ElementLATCH
-{
 	fn name(&self) -> String {
-		return format!("ElementLATCH{{{}}}", self.vals.len());
+		format!("ElementLATCH{{{}}}", self.vals.len())
 	}
 	fn get_outputs(&self, _: usize) -> usize {
-		return 1+self.vals.len();
+		1+self.vals.len()
 	}
 	
 	fn dup(&self) -> Box<Element+'static> {
@@ -429,13 +416,67 @@ impl Element for ElementLATCH
 	}
 }
 
+#[derive(Clone,Default)]
+struct ElementJkFlipFlop
+{
+	last_clk: bool,
+	state: bool,
+}
+impl Element for ElementJkFlipFlop
+{
+	fn new(params: &[u64], n_inputs: usize) -> NewEleResult
+	{
+		if n_inputs != 3 {
+			return Err("".into());
+		}
+		Ok(Box::new(Self::default()))
+	}
+	fn name(&self) -> String {
+		"JkFlipFlop".into()
+	}
+	fn get_outputs(&self, _n_inputs: usize) -> usize {
+		2
+	}
+
+	fn dup(&self) -> Box<Element+'static> {
+		Box::new(self.clone()) as Box<Element>
+	}
+
+	fn update(&mut self, outlines: &mut [bool], inlines: &[bool])
+	{
+		let clk = inlines[0];
+		let j = inlines[1];
+		let k = inlines[2];
+		if clk != self.last_clk && !clk
+		{
+			// Falling edge: Update state
+			self.state = if j && k {
+					!self.state
+				}
+				else if j {
+					true
+				}
+				else if k {
+					false
+				}
+				else {
+					self.state
+				};
+			self.last_clk = clk;
+		}
+
+		outlines[0] = self.state;
+		outlines[1] = !self.state;
+	}
+}
+
 #[derive(Clone)]
 struct ElementMUX
 {
 	bits: u8,
 	bussize: u8,
 }
-impl ElementMUX
+impl Element for ElementMUX
 {
 	fn new(params: &[u64], n_inputs: usize) -> NewEleResult
 	{
@@ -455,16 +496,13 @@ impl ElementMUX
 			return Err(format!("Incorrect input count, expected {}, got {}", exp_inputs, n_inputs));
 		}
 		
-		return Ok( Box::new(ElementMUX{bits: bits, bussize: bussize}) as Box<Element> );
+		Ok( Box::new(ElementMUX{bits: bits, bussize: bussize}) as Box<Element> )
 	}
-}
-impl Element for ElementMUX
-{
 	fn name(&self) -> String {
-		return format!("ElementMUX{{{},{}}}", self.bits,self.bussize);
+		format!("ElementMUX{{{},{}}}", self.bits,self.bussize)
 	}
 	fn get_outputs(&self, _n_inputs: usize) -> usize {
-		return self.bussize as usize;
+		self.bussize as usize
 	}
 	
 	fn dup(&self) -> Box<Element+'static> {
@@ -491,7 +529,7 @@ struct ElementDEMUX
 {
 	bits: u8
 }
-impl ElementDEMUX
+impl Element for ElementDEMUX
 {
 	fn new(params: &[u64], n_inputs: usize) -> NewEleResult
 	{
@@ -510,17 +548,14 @@ impl ElementDEMUX
 			return Err(format!("Incorrect input count, expected {}, got {}", exp_inputs, n_inputs));
 		}
 		
-		return Ok( Box::new(ElementDEMUX{bits: bits}) as Box<Element> );
+		Ok( Box::new(ElementDEMUX{bits: bits}) as Box<Element> )
 	}
-}
-impl Element for ElementDEMUX
-{
 	fn name(&self) -> String {
-		return format!("ElementDEMUX{{{}}}", self.bits);
+		format!("ElementDEMUX{{{}}}", self.bits)
 	}
 	fn get_outputs(&self, n_inputs: usize) -> usize {
 		let bussize = n_inputs - 1 - self.bits as usize;
-		return bussize << self.bits as usize;
+		bussize << self.bits as usize
 	}
 	
 	fn dup(&self) -> Box<Element+'static> {
@@ -549,7 +584,7 @@ struct ElementSEQUENCER
 	count: u16,
 	position: u16,
 }
-impl ElementSEQUENCER
+impl Element for ElementSEQUENCER
 {
 	fn new(params: &[u64], n_inputs: usize) -> NewEleResult
 	{
@@ -564,9 +599,6 @@ impl ElementSEQUENCER
 		
 		return Ok( Box::new(ElementSEQUENCER { count: count, position: 0 }) as Box<Element> );
 	}
-}
-impl Element for ElementSEQUENCER
-{
 	fn name(&self) -> String {
 		return format!("ElementSEQUENCER{{{}}}", self.count);
 	}
@@ -613,7 +645,7 @@ struct ElementMEMORY_DRAM
 	addrbits: u8,
 	data: Vec<u32>,
 }
-impl ElementMEMORY_DRAM
+impl Element for ElementMEMORY_DRAM
 {
 	fn new(params: &[u64], n_inputs: usize) -> NewEleResult
 	{
@@ -633,16 +665,17 @@ impl ElementMEMORY_DRAM
 			return Err(format!("Incorrect input count, expected {}, got {}", exp_inputs, n_inputs));
 		}
 		
-		return Ok( Box::new(ElementMEMORY_DRAM {wordsize: wordsize, addrbits: addrbits, ..Default::default()}) as Box<Element> );
+		Ok( Box::new(ElementMEMORY_DRAM {
+			wordsize: wordsize,
+			addrbits: addrbits,
+			..Default::default()
+			}) as Box<Element> )
 	}
-}
-impl Element for ElementMEMORY_DRAM
-{
 	fn name(&self) -> String {
-		return format!("ElementMEMORY_DRAM{{{},{}}}", self.wordsize, self.addrbits);
+		format!("ElementMEMORY_DRAM{{{},{}}}", self.wordsize, self.addrbits)
 	}
 	fn get_outputs(&self, _n_inputs: usize) -> usize {
-		return 1 + 1 << self.wordsize as usize;
+		1 + 1 << self.wordsize as usize
 	}
 	
 	fn dup(&self) -> Box<Element+'static> {

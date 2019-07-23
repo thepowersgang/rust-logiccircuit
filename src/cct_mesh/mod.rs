@@ -19,7 +19,7 @@ impl From<usize> for LinkIdx { fn from(v: usize) -> Self { LinkIdx(v as u32) } }
 impl From<u32> for LinkIdx { fn from(v: u32) -> Self { LinkIdx(v) } }
 impl ::std::ops::Deref for LinkIdx { type Target = u32; fn deref(&self) -> &u32 { &self.0 } }
 #[derive(Default,Debug)]
-struct Link
+pub struct Link
 {
 	name: String,
 	reflink: Option<LinkRef>,
