@@ -4,15 +4,24 @@
 use std::default::Default;
 use simulator::read_uint;
 
-/*
-pub enum Errcode
-{
-	UnknownEle,
-	ParamCount(usize, usize, &'static str),
-	ParamRange(usize, usize, usize),
-	InputCount(usize, usize),
-}
-*/
+//pub enum Error
+//{
+//	UnknownElement,
+//	ParamCount {
+//		expected: usize,
+//		have: usize,
+//		reason: &'static str
+//		},
+//	ParamRange {
+//		param_index: usize,
+//		min: usize,
+//		max: usize
+//		},
+//	InputCount {
+//		min: usize,
+//		max: usize
+//		},
+//}
 
 pub trait Element
 {
@@ -424,7 +433,7 @@ struct ElementJkFlipFlop
 }
 impl Element for ElementJkFlipFlop
 {
-	fn new(params: &[u64], n_inputs: usize) -> NewEleResult
+	fn new(_params: &[u64], n_inputs: usize) -> NewEleResult
 	{
 		if n_inputs != 3 {
 			return Err("".into());

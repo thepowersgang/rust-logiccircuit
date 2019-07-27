@@ -38,14 +38,14 @@ fn main()
 	opts.optopt("", "test-glob", "Run tests matching glob", "GLOB");
 	opts.optflag("", "test-display", "Print display items during tests");
 
-	println!("> opts = ");
+	//println!("> opts = ");
 	let args_s: Vec<_> = ::std::env::args().collect();
 	let args = match opts.parse(&args_s[1..])
 		{
 		Ok(m) => m,
 		Err(f) => panic!(f.to_string()),
 		};
-	println!("> args = {:?}", args.free);
+	//println!("> args = {:?}", args.free);
 	
 	if args.opt_present("h")
 	{

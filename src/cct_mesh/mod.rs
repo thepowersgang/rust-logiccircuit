@@ -14,7 +14,7 @@ macro_rules! chain{ ($base:expr, $($next:expr),+) => ( $base $(.chain($next) )+ 
 macro_rules! zip  { ($base:expr, $($next:expr),+) => ( $base $(.zip($next) )+ ) }
 
 #[derive(Copy,Clone,Debug,PartialEq,PartialOrd)]
-struct LinkIdx(u32);
+pub struct LinkIdx(u32);
 impl From<usize> for LinkIdx { fn from(v: usize) -> Self { LinkIdx(v as u32) } }
 impl From<u32> for LinkIdx { fn from(v: u32) -> Self { LinkIdx(v) } }
 impl ::std::ops::Deref for LinkIdx { type Target = u32; fn deref(&self) -> &u32 { &self.0 } }
@@ -169,38 +169,6 @@ impl Link
 			}
 		}
 	}
-	/// ? Set the alias/tag by following `self.reflink`
-	pub fn tag_from_ref(&mut self)
-	{
-		if self.aliased == None
-		{
-			match self.reflink
-			{
-			Some(ref other_ref) => {
-				let other = other_ref.clone();
-				loop
-				{
-					let other_link: &Link = unimplemented!();
-					if let Some(ref x) = other_link.reflink
-					{
-						other = (*x).clone();
-					}
-					else
-					{
-						self.aliased = other_link.aliased;
-						debug!("Indirect tag of '{}' from '{}' ({:?})",
-							self.name, other_link.name, self.aliased);
-						assert!(self.aliased != None);
-						break;
-					}
-				}
-				
-				
-				},
-			None => {}
-			}
-		}
-	}
 	pub fn get_alias(&self) -> Option<LinkIdx> {
 		self.aliased
 	}
@@ -217,30 +185,6 @@ impl Default for LinkRef {
 	}
 }
 
-//impl Default for Unit
-//{
-//	fn default() -> Unit {
-//		Unit {
-//			name: "".to_string(),
-//			inputs: Vec::new(),
-//			outputs: Vec::new(),
-//			
-//			link_zero: Unit::make_link( "=0".to_string() ),
-//			link_one: Unit::make_link( "=1".to_string() ),
-//			anon_links: LinkedList::new(),
-//			links:  ::std::collections::HashMap::new(),	// Definitive list of links
-//			groups: ::std::collections::HashMap::new(),
-//			
-//			elements: LinkedList::new(),
-//			subunits: LinkedList::new(),
-//			
-//			breakpoints: LinkedList::new(),
-//			disp_items: LinkedList::new(),
-//			//visgroups: LinkedList::new(),
-//			flattened: None,
-//		}
-//	}
-//}
 impl Unit
 {
 	pub fn new(name: String) -> Unit {
@@ -403,7 +347,40 @@ impl Unit
 		// - And once all non-reference links are tagged, copy those tags to the reference links
 		for link in chain!( self.anon_links.iter(), self.links.values() )
 		{
-			self.link_collection[link.0].tag_from_ref();
+			let other_ref = if let Link { aliased: None, reflink: Some(ref other_ref), ..} = self.link_collection[link.0] {
+					Some(other_ref.clone())
+				}
+				else {
+					None
+				};
+			if let Some(mut other) = other_ref
+			{
+				loop
+				{
+					fn index_disjoint<T>(c: &mut [T], a: usize, b: usize) -> (&mut T,&mut T) {
+						assert!(a != b);
+						let p_a: *mut T = &mut c[a];
+						let p_b: *mut T = &mut c[b];
+						unsafe {
+							(&mut *p_a, &mut *p_b)
+						}
+					}
+					// Get the other link from the ref
+					let (thislink, other_link) = index_disjoint(&mut self.link_collection, link.0, other.0);
+					if let Some(ref x) = other_link.reflink
+					{
+						other = (*x).clone();
+					}
+					else
+					{
+						thislink.aliased = other_link.aliased;
+						debug!("Indirect tag of '{}' from '{}' ({:?})",
+							thislink.name, other_link.name, thislink.aliased);
+						assert!(thislink.aliased != None);
+						break;
+					}
+				}
+			}
 		}
 		let n_local_links = n_links;
 		
