@@ -28,7 +28,7 @@ enum TestStatus
 #[allow(dead_code)]
 fn main()
 {
-	env_logger::init().unwrap();
+	env_logger::init();
 	
 	println!("main()");
 	// 1. Parse command line arguments
@@ -104,8 +104,8 @@ fn main()
 	{
 		// Simulate until stopped
 		let mut sim = ::simulator::Engine::new( &flat );
-		let step_count: u32 = 20;
-		for _ in 0 .. step_count
+		let step_count: u32 = 30;
+		for ticknum in 0 .. step_count
 		{
 			sim.tick();
 			
@@ -113,7 +113,10 @@ fn main()
 			{
 				println!("Breakpoint hit.");
 			}
-			sim.show_display();
+			if sim.show_display()
+			{
+				println!("--- ^ TICK {}", ticknum);
+			}
 		}
 	}
 }

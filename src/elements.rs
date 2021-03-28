@@ -2,6 +2,7 @@
 //
 //
 use std::default::Default;
+use std::rc::Rc;
 use simulator::read_uint;
 
 //pub enum Error
@@ -23,9 +24,10 @@ use simulator::read_uint;
 //		},
 //}
 
-pub trait Element
+pub trait Element //: ::std::fmt::Display
 {
 	fn new(params: &[u64], n_inputs: usize) -> NewEleResult where Self: Sized;
+	fn finalise(&mut self, unit: &::cct_mesh::Unit) {}
 	fn name(&self) -> String;
 	fn get_outputs(&self, n_inputs: usize) -> usize;
 	fn dup(&self) -> Box<Element+'static>;
@@ -60,6 +62,7 @@ pub fn create(name: &str, params: &[u64], n_inputs: usize) -> NewEleResult
 	"ENABLE" => ElementENABLE::new(params, n_inputs),
 	
 	// Builtin Units
+	"CLOCK" => ElementClock::new(params, n_inputs),
 	"JKFLIPFLOP" => ElementJkFlipFlop::new(params, n_inputs),
 	"LATCH" => ElementLATCH::new(params, n_inputs),
 	"MUX" => ElementMUX::new(params, n_inputs),
@@ -67,7 +70,7 @@ pub fn create(name: &str, params: &[u64], n_inputs: usize) -> NewEleResult
 	"SEQUENCER" => ElementSEQUENCER::new(params, n_inputs),
 	"MEMORY_DRAM" => ElementMEMORY_DRAM::new(params, n_inputs),
 
-	//"ROM" => ElementROM::new(params, n_inputs),
+	"ROM" => ElementROM::new(params, n_inputs),
 	
 	// Logic Gates
 	"AND" => ElementAND::new(params, n_inputs),
@@ -267,6 +270,55 @@ impl Element for ElementHOLD
 	}
 }
 
+#[derive(Clone)]
+struct ElementClock
+{
+	period: usize,
+	duty: usize,
+
+	counter: usize,
+}
+impl ElementClock
+{
+}
+impl Element for ElementClock
+{
+	fn new(params: &[u64], n_inputs: usize) -> NewEleResult
+	{
+		let period = get_or!(params, 0, 1u64) as usize - 1;
+		let duty = get_or!(params, 1, 1u64) as usize;
+		Ok( Box::new(ElementClock {
+			period,
+			duty,
+			counter: 0,
+			} ) )
+	}
+	fn name(&self) -> String {
+		format!("ElementClock{{{},{}}}", self.period,self.duty)
+	}
+	fn get_outputs(&self, n_inputs: usize) -> usize {
+		1
+	}
+	
+	fn dup(&self) -> Box<Element+'static> {
+		Box::new(self.clone()) as Box<Element>
+	}
+
+	fn update(&mut self, outlines: &mut [bool], inlines: &[bool])
+	{
+		if inlines[0]
+		{
+			self.counter += 1;
+			if self.counter >= self.period {
+				self.counter = 0;
+			}
+			if self.counter < self.duty {
+				outlines[0] = true;
+			}
+		}
+	}
+}
+
 macro_rules! def_logic{ ($name:ident, $init:expr, $op:expr, $finish:expr) => (
 #[derive(Clone)]
 struct $name
@@ -456,8 +508,10 @@ impl Element for ElementJkFlipFlop
 		let clk = inlines[0];
 		let j = inlines[1];
 		let k = inlines[2];
+		//println!("Jk: C={} J={} K={} S={}", clk, j, k, clk);
 		if clk != self.last_clk && !clk
 		{
+			//println!("JkFalling: {:p} {} J={} K={}", self, self.state, j, k);
 			// Falling edge: Update state
 			self.state = if j && k {
 					!self.state
@@ -471,8 +525,8 @@ impl Element for ElementJkFlipFlop
 				else {
 					self.state
 				};
-			self.last_clk = clk;
 		}
+		self.last_clk = clk;
 
 		outlines[0] = self.state;
 		outlines[1] = !self.state;
@@ -712,6 +766,66 @@ impl Element for ElementMEMORY_DRAM
 				*val |= writeval as u32;
 			}
 			write_uint(outlines, 1, self.wordsize, self.data[wordnum] as u64);
+		}
+	}
+}
+
+#[derive(Clone)]
+struct ElementROM
+{
+	file_index: usize,
+	wordsize: usize,
+	romdata: Option<Rc<Vec<u64>>>,
+}
+impl Element for ElementROM
+{
+	fn new(params: &[u64], n_inputs: usize) -> NewEleResult
+	{
+		//let addr_size = n_inputs - 1;
+
+		let mut params_it = params.iter().cloned();
+		let file_index = params_it.next().ok_or_else(|| format!("No ROM index passed"))? as usize;
+		// TODO: How can this easily get the ROM data?
+		// - At this stage, will the data be known?
+		let wordsize = params_it.next().unwrap_or(8) as usize;
+		Ok( Box::new(ElementROM {
+			file_index,
+			wordsize,
+			romdata: None,
+			}) as Box<Element> )
+	}
+	fn finalise(&mut self, unit: &::cct_mesh::Unit) {
+		self.romdata = Some( unit.get_rom(self.file_index) );
+	}
+	fn name(&self) -> String
+	{
+		format!("Element_ROM{{{}, {}}}", self.wordsize, self.file_index)
+	}
+	fn get_outputs(&self, _n_inputs: usize) -> usize {
+		self.wordsize
+	}
+
+	fn dup(&self) -> Box<Element+'static> {
+		Box::new(self.clone())
+	}
+	fn update(&mut self, outlines: &mut [bool], inlines: &[bool])
+	{
+		let romdata = self.romdata.as_ref().unwrap();
+
+		// If the ROM isn't located, load it now?
+		// - Better idea: have a function used to finalise an element after unit is complete
+		if inlines[0]
+		{
+			// Decode address (MSB first)
+			let addr = ::simulator::decode_u64_be(&inlines[1..]);
+			// Fetch ROM data
+			let d = romdata.get(addr as usize).cloned().unwrap_or(0);
+			//println!("{} {} = {:x}", self.file_index, addr, d);
+			// And output
+			for (i,out) in outlines.iter_mut().enumerate()
+			{
+				*out = (d >> i) & 1 != 0;
+			}
 		}
 	}
 }

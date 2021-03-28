@@ -297,6 +297,7 @@ impl<'rl> Parser<'rl>
 				Vec::new()
 			};
 		
+		// TODO: Support named lines?
 		let inputs = self.get_value_list(meshroot, unit);
 		
 		return ( ident, params, inputs );
@@ -483,6 +484,38 @@ fn handle_meta(parser: &mut Parser, meshroot: &mut ::cct_mesh::Root, state: &mut
 		syntax_assert_get!(parser, TokNewline => (), "Expected newline after group definition");
 		
 		state.get_curunit().make_group(&name, size);
+		},
+	"rom_data_hex" => {
+		let index = parser.get_numeric() as usize;
+		let mut data = String::new();
+		loop {
+			if data.len() > 0 {
+				data.push(' ');
+			}
+			match parser.get_token()
+			{
+			TokString(v) => data.push_str(&v),
+			TokNewline => break,
+			t @ _ => syntax_assert_raw!(parser.lexer, t, TokNewline => (), "Expected newline after ROM data"),
+			}
+		}
+
+		fn parse_hex(s: &str) -> Result<Vec<u64>,String> {
+			s.split(' ')
+				.filter(|w| w.len() > 0)
+				.map(|w| u64::from_str_radix(w, 16))
+				.collect::<Result<Vec<u64>,_>>()
+				.map_err(|e| e.to_string())
+		}
+
+		match parse_hex(&data)
+		{
+		Ok(d) => {
+			//println!("{:?}", d);
+			state.get_curunit().set_rom_data(index, d);
+			},
+		Err(e) => syntax_error!(parser.lexer, "Unable to parse hex string: {}", e),
+		}
 		},
 	"endunit" => {
 		syntax_assert_get!(parser, TokNewline => (), "Expected newline after #endunit");

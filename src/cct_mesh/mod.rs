@@ -88,6 +88,8 @@ pub struct Unit
 	//visgroups: LinkedList<VisGroup>,
 	
 	flattened: Option<Rc<flat::Mesh>>,
+
+	rom_data: Vec<Option<Rc<Vec<u64>>>>,
 }
 
 struct TestAssert
@@ -298,7 +300,8 @@ impl Unit
 			Ok( out )
 			},
 		None => {
-			let ele = try!(::elements::create(name, &*params, inputs.len()));
+			let mut ele = try!(::elements::create(name, &*params, inputs.len()));
+			ele.finalise(self);
 			
 			let out = match outputs { Some(o) => o, None => self.make_anon_links( ele.get_outputs(inputs.len()) ) };
 			
@@ -558,6 +561,16 @@ impl Unit
 			ret.push( unitref.name.clone() );
 		}
 		return ret;
+	}
+
+	pub fn get_rom(&self, index: usize) -> Rc<Vec<u64>> {
+		self.rom_data[index].clone().unwrap()
+	}
+	pub fn set_rom_data(&mut self, index: usize, data: Vec<u64>) {
+		if self.rom_data.len() <= index {
+			self.rom_data.resize_with(index+1, Default::default)
+		}
+		self.rom_data[index] = Some(Rc::new(data))
 	}
 }
 

@@ -180,15 +180,34 @@ fn print_display(fmtstr: &str, vals: &[bool])
 /// Read an unsigned integer from a sequence of bools
 pub fn read_uint(inlines: &[bool], base: usize, count: u8) -> u64
 {
+	decode_u64_le(&inlines[base..][..count as usize])
+}
+
+/// Interpret a sequence of bits as an unsigned integer (least significant first)
+pub fn decode_u64_le(inlines: &[bool]) -> u64
+{
 	let mut val: u64 = 0;
-	for i in 0 .. count as usize
+	for (i,line) in inlines.iter().enumerate()
 	{
-		if inlines[base+i]
+		if *line
 		{
 			val |= 1u64 << i;
 		}
 	}
-	return val;
+	val
+}
+/// Interpret a sequence of bits as an unsigned integer (most significant first)
+pub fn decode_u64_be(inlines: &[bool]) -> u64
+{
+	let mut val: u64 = 0;
+	for (i,line) in inlines.iter().enumerate()
+	{
+		if *line
+		{
+			val |= 1u64 << (inlines.len() - 1 - i);
+		}
+	}
+	val
 }
 
 // vim: ft=rust
